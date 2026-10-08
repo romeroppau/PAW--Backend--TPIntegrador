@@ -120,7 +120,7 @@ En este documento, **servidor de despliegue** es la máquina (física o virtual,
 ## Ciclo de vida del software
 - **Diseño:** decisiones de arquitectura descritas arriba: el API Gateway (Nginx) como única entrada, tokens de servicio entre módulos, un usuario de MySQL por módulo y la tabla de operaciones pendientes.
 - **Desarrollo:**
-  - revisión de dependencias de terceros con `npm audit` o `composer audit` (comandos de los gestores de paquetes de Node y de PHP que comparan las librerías del proyecto con una base de vulnerabilidades conocidas; se usa el que corresponda al lenguaje de cada módulo);
+  - revisión de dependencias de terceros con  `composer audit` (comando de PHP que comparan las librerías del proyecto con una base de vulnerabilidades conocidas);
   - los secretos van en el `.env` de cada módulo, fuera del repositorio, y hay un `.env.example` en cada repo;
   - secretos distintos para desarrollo y para producción.
 - **Testing:**
