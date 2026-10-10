@@ -85,10 +85,11 @@ Entre los principales objetivos se encuentran:
 * Gestionar productos y stock.
 * Controlar los insumos internos de la veterinaria.
 * Permitir la venta de productos con retiro en el local.
-* Incorporar un espacio destinado a publicaciones de adopción.
+* Gestionar el proceso de adopción, desde la publicación por rescatistas validados hasta el chequeo veterinario obligatorio.
 * Generar reportes sobre ventas, turnos e inventario.
-* Implementar beneficios y descuentos para los clientes.
-* Integrar WhatsApp como medio de comunicación para la solicitud y coordinación de turnos.
+* Generar recomendaciones automáticas a partir de los datos del sistema.
+* Implementar el programa de puntos Huellitas para los clientes.
+* Integrar WhatsApp como medio de comunicación para la solicitud y coordinación de turnos, recordatorios y promociones.
 
 ---
 
@@ -96,7 +97,7 @@ Entre los principales objetivos se encuentran:
 
 **HuellaVet** es una aplicación web destinada a una veterinaria que integra funcionalidades de gestión y atención al cliente.
 
-El sistema contempla dos roles principales:
+El sistema contempla tres roles principales:
 
 ### Cliente
 
@@ -104,14 +105,23 @@ El cliente podrá:
 
 * Registrarse e iniciar sesión.
 * Gestionar sus mascotas.
-* Consultar la ficha e historia clínica de sus mascotas.
+* Consultar la ficha, historia clínica y calendario sanitario de sus mascotas.
 * Consultar turnos próximos y anteriores.
 * Solicitar turnos mediante WhatsApp.
-* Consultar y comprar productos del catálogo.
+* Consultar y comprar productos del catálogo, con recomendaciones según sus mascotas.
 * Seleccionar el retiro de productos en el local.
 * Consultar sus facturas.
-* Acceder a beneficios y descuentos.
-* Publicar y consultar publicaciones de adopción.
+* Sumar y canjear puntos Huellitas.
+* Postularse para adoptar y seguir el estado de sus postulaciones.
+* Recibir notificaciones: recordatorios de vacunas, avisos de recompra y promociones.
+
+### Rescatista
+
+El rescatista podrá:
+
+* Registrarse y quedar pendiente hasta que el veterinario lo apruebe.
+* Publicar animales en adopción, con foto, descripción, historial clínico y estado. Es el único rol que puede publicar en adopciones.
+* Revisar las postulaciones de cada animal y elegir al adoptante.
 
 ### Veterinario / Administrador
 
@@ -119,13 +129,14 @@ El veterinario o administrador podrá:
 
 * Gestionar pacientes y sus fichas clínicas.
 * Registrar diagnósticos e insumos utilizados durante las consultas.
-* Gestionar turnos.
-* Gestionar productos del catálogo.
+* Registrar en la agenda los turnos coordinados por WhatsApp.
+* Gestionar productos del catálogo, con fecha de vencimiento.
 * Administrar el stock.
 * Gestionar los insumos internos de la veterinaria.
 * Registrar movimientos de inventario.
 * Gestionar facturación.
-* Moderar publicaciones de adopción.
+* Validar rescatistas.
+* Moderar publicaciones de adopción y cerrar las adopciones tras el chequeo obligatorio.
 * Consultar reportes de ventas, turnos e inventario.
 
 ---
@@ -138,12 +149,13 @@ Las principales funcionalidades contempladas para el proyecto son:
 * **Gestión de turnos:** solicitud y coordinación de turnos mediante WhatsApp, junto con la visualización de turnos próximos y anteriores.
 * **Historias clínicas:** registro de diagnósticos e insumos utilizados durante las consultas.
 * **Facturación:** generación de facturas asociadas a consultas y compras.
-* **Tienda:** catálogo de productos, compras y retiro en el local.
+* **Tienda:** catálogo de productos, pago por la web y retiro en el local.
 * **Inventario e insumos:** gestión de productos, insumos internos, stock y movimientos de inventario.
-* **Adopciones:** espacio para publicar y consultar animales en adopción, con moderación por parte del administrador.
+* **Adopciones:** proceso con estados (publicada, con postulantes, adoptante elegido, turno de chequeo y vacunación, adopción finalizada). Solo publican los rescatistas validados, el chequeo en la veterinaria es obligatorio y, al finalizar, la ficha del animal se transfiere al adoptante.
 * **Reportes:** información sobre ventas, turnos atendidos, stock y movimientos de inventario.
-* **Beneficios:** descuentos para los clientes.
-* **Comunicación:** integración con WhatsApp para la solicitud y coordinación de turnos.
+* **Motor de recomendaciones:** descuentos por vencimiento, promociones para franjas con pocos turnos, aviso de recompra de alimento, calendario sanitario, aviso de stock bajo y productos recomendados según la mascota.
+* **Huellitas:** puntos que el cliente suma por registrarse, tener las vacunas al día, comprar, publicar reseñas y adoptar, y que canjea por descuentos en la tienda o en consultas.
+* **Comunicación:** integración con WhatsApp para la solicitud y coordinación de turnos, recordatorios y promociones.
 
 ---
 
@@ -165,9 +177,17 @@ El desarrollo del proyecto se encuentra dividido en diferentes repositorios de G
 
 Repositorio destinado al desarrollo de la interfaz de usuario y las vistas de la aplicación.
 
-Incluye las diferentes interfaces del sitio público, panel del cliente y panel del veterinario/administrador.
+Incluye las diferentes interfaces del sitio público, panel del cliente, panel del rescatista y panel del veterinario/administrador.
 
 [Repositorio Frontend](https://github.com/romeroppau/PAW--Frontend--TPIntegrador.git)
+
+### ApiGateway
+
+Repositorio destinado a la configuración del API Gateway (Nginx), la única entrada pública al sistema.
+
+Recibe los pedidos del Frontend, los deriva al módulo correspondiente según la URL, maneja la conexión HTTPS y bloquea desde afuera las rutas internas entre módulos.
+
+[Repositorio ApiGateway](https://github.com/romeroppau/PAW--ApiGateway--TPIntegrador.git)
 
 ### Backend
 
@@ -193,11 +213,19 @@ Incluye el control de stock, productos, insumos internos y movimientos relaciona
 
 [Repositorio Inventario](https://github.com/romeroppau/PAW--Inventario--TPIntegrador.git)
 
+### Adopciones
+
+Repositorio destinado a las funcionalidades relacionadas con el proceso de adopción.
+
+Incluye la publicación de animales por parte de rescatistas validados, la moderación, las postulaciones, la elección del adoptante, el chequeo veterinario obligatorio y el cierre de la adopción.
+
+[Repositorio Adopciones](https://github.com/romeroppau/PAW--Adopciones--TPIntegrador.git)
+
 ### Reportes
 
 Repositorio destinado al desarrollo de los reportes de la aplicación.
 
-Contempla información relacionada con ventas, turnos atendidos, stock y movimientos de inventario.
+Contempla información relacionada con ventas, turnos atendidos, stock y movimientos de inventario, además del motor de recomendaciones.
 
 [Repositorio Reportes](https://github.com/romeroppau/PAW--Reportes--TPIntegrador.git)
 
@@ -217,7 +245,12 @@ Para el desarrollo del proyecto se utilizarán las tecnologías y herramientas a
 
 ### Backend
 
-La tecnología utilizada para el desarrollo del Backend se encuentra documentada en el repositorio correspondiente.
+* PHP (sin frameworks)
+* MySQL y PDO
+* Composer y PHPUnit
+* Nginx como API Gateway
+
+El detalle y la justificación de cada tecnología están en [TECNOLOGíA.md](./TECNOLOGíA.md).
 
 ### Herramientas
 
@@ -266,9 +299,3 @@ Para cada entrega se generará el **tag correspondiente en los repositorios**, d
 **Universidad Nacional de Luján — 2026**
 
 ---
-
-## Trabajo Práctico Integrador
-
-Este proyecto corresponde al **Trabajo Práctico Final Integrador de Conocimientos** de la asignatura Programación en Ambiente Web.
-
-El desarrollo del proyecto se realizará de manera incremental durante la cursada, incorporando progresivamente las funcionalidades definidas para la aplicación.
