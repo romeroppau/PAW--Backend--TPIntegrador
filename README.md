@@ -228,9 +228,6 @@ Repositorio destinado al desarrollo de los reportes de la aplicación.
 Contempla información relacionada con ventas, turnos atendidos, stock y movimientos de inventario, además del motor de recomendaciones.
 
 [Repositorio Reportes](https://github.com/romeroppau/PAW--Reportes--TPIntegrador.git)
-
-> Las funcionalidades de HuellaVet no se encuentran necesariamente limitadas a un único repositorio. Algunas funcionalidades requieren la interacción entre diferentes componentes del sistema, como el Frontend, Backend y los módulos específicos.
-
 ---
 
 ## Tecnologías y herramientas
