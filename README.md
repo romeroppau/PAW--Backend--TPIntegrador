@@ -1,9 +1,61 @@
-# PAW---2026
-Repositorio Backend - PAW 2026 - La 25
+# HuellaVet — Backend
+
+Repositorio Backend del Trabajo Práctico Integrador de **Programación en Ambiente Web (PAW)** — UNLu, 2026 — Grupo **La 25**.
+
+## Autores
+
+| Integrante | Legajo |
+| --- | --- |
+| Ana Paula Romero | 195388 |
+| Maria Trinidad Lopez | 197958 |
+| Valentino Aimale | 197961 |
+| Cristian Tomás Anito | 158887 |
 
 ## Documentación
 - [Seguridad](./SEGURIDAD.md)
-# HuellaVet — Trabajo Práctico Integrador - PAW 2026 - UNLu
+
+## Cómo correrlo
+
+> Como el backend todavía está en etapa de diseño: este repositorio contiene la documentación y el código se irá incorporando durante la cursada. Estos pasos describen cómo se va a levantar el módulo según el stack definido en [TECNOLOGíA.md](./TECNOLOGíA.md), pero tener en cuenta que se va a ir modificando y ajustando pasos a medida que se agregue el código.
+
+### Pasos
+
+1. Clonar el repositorio:
+
+```bash
+   git clone https://github.com/romeroppau/PAW--Backend--TPIntegrador.git
+   cd PAW--Backend--TPIntegrador
+```
+
+2. Instalar las dependencias de desarrollo:
+
+```bash
+   composer install
+```
+
+3. Crear la base de datos en MySQL:
+
+```sql
+   CREATE DATABASE huellavet CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
+```
+
+4. Configurar la conexión a la base de datos (host, puerto, nombre de la base, usuario y contraseña). Las credenciales no se suben al repositorio.
+
+5. Levantar el módulo con el servidor integrado de PHP, escuchando solo en localhost como indica [SEGURIDAD.md](./SEGURIDAD.md):
+
+```bash
+   php -S 127.0.0.1:3001
+```
+
+6. Para el sistema completo, levantar cada módulo en su puerto y configurar Nginx para que reenvíe `/api/...` al módulo correspondiente.
+
+### Pruebas
+
+```bash
+./vendor/bin/phpunit
+```
+
+---
 
 ## Introducción
 
