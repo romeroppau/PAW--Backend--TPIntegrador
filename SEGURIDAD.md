@@ -57,7 +57,7 @@ Los servicios externos son MercadoPago y WhatsApp. Las tareas programadas las di
   | Backend | `POST /internal/notificaciones` | Pacientes, Adopciones, Reportes |
   | Pacientes | `POST /internal/mascotas/{id}/transferir` | Adopciones |
 
-  El funcionamiento de los endpoints de Huellitas está en `huellitas.md`.
+  El funcionamiento de los endpoints de Huellitas está en `HUELLITAS.md`.
 
 - Las llamadas internas entre módulos van por HTTP a la entrada interna de Nginx en `127.0.0.1`: no salen del contenedor.
 - **Si el módulo destino no responde, nada queda a medias:**
