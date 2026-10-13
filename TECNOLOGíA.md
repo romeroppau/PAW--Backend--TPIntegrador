@@ -15,7 +15,7 @@ Siguiendo el programa de la materia, el backend se programa con **PHP puro, sin 
 
 ## MySQL
 
-**Qué es:** la base de datos donde se guarda toda la información del sistema: usuarios, mascotas, turnos, consultas, productos, facturas, adopciones y Huellitas.
+**Qué es:** la base de datos donde se guarda toda la información del sistema: usuarios, mascotas, turnos, consultas, productos, facturas, adopciones y Huellitas. Está alojada en Aiven (ver "Plataformas de despliegue").
 
 **Por qué la elegimos:**
 - Es una base de datos relacional, es decir, guarda los datos en tablas relacionadas entre sí. Eso se ajusta a HuellaVet, donde casi todo está conectado: un cliente tiene mascotas, cada mascota tiene turnos, cada turno tiene una consulta y cada consulta tiene una factura.
@@ -48,23 +48,66 @@ Siguiendo el programa de la materia, el backend se programa con **PHP puro, sin 
 
 ## Nginx
 
-**Qué es:** el programa que funciona como puerta de entrada al sistema (el API Gateway del diagrama de arquitectura). Recibe todos los pedidos que llegan desde internet y se los pasa al módulo que corresponde. Por ejemplo, lo que empieza con `/api/pacientes/` va al módulo Pacientes. También se encarga de que la conexión con el navegador sea segura (HTTPS).
+**Qué es:** el programa que funciona como puerta de entrada a los módulos (el API Gateway del diagrama de arquitectura). Recibe los pedidos que llegan a `/api/...` y se los pasa al módulo que corresponde. Por ejemplo, lo que empieza con `/api/pacientes/` va al módulo Pacientes. También bloquea desde afuera las rutas internas (`/internal/...`), que solo usan los módulos entre sí.
 
 **Por qué lo elegimos:**
-- PHP no sabe recibir por sí solo los pedidos que llegan desde internet. Necesita un programa que haga esa tarea, y Nginx es uno de los más usados para eso.
-- Con un solo programa resolvemos tres cosas: la entrada única al sistema, el reparto de pedidos entre los cinco módulos y la conexión segura.
+- PHP no sabe recibir por sí solo los pedidos que llegan desde internet. Necesita un programa adelante que los reciba y se los pase, y Nginx es uno de los más usados para eso.
+- Con un solo programa resolvemos dos cosas: que PHP pueda atender pedidos y el reparto de esos pedidos entre los cinco módulos.
 - Es liviano y su configuración es un archivo de texto simple.
+- El cifrado HTTPS no lo hace Nginx: lo resuelven Vercel y Render (ver más abajo).
 
-## Cron
+## Docker
 
-**Qué es:** la herramienta del sistema operativo del servidor que ejecuta tareas solas, en horarios fijos. En HuellaVet hay dos tareas así:
-- el motor de recomendaciones, que se ejecuta una vez por día;
-- el reintento de las operaciones pendientes entre módulos, que se ejecuta cada minuto.
+**Qué es:** una herramienta que arma una "caja" (contenedor) con todo lo que necesita el backend para funcionar: un sistema operativo mínimo, Nginx, PHP y el código de los cinco módulos. Esa caja se describe en un archivo de texto (`Dockerfile`) y funciona igual en cualquier computadora.
+
+**Por qué la elegimos:**
+- Render necesita recibir el backend armado de esta forma para poder ejecutarlo.
+- Con el mismo `Dockerfile` cada integrante levanta el proyecto en su computadora, más una base MySQL local, con Docker Compose. Así lo que funciona en una máquina funciona en todas y en Render.
+- Es gratis. Es una herramienta y no una librería del código, pero pedimos el aval docente igual.
+
+## GitHub Actions
+
+**Qué es:** el servicio de GitHub que ejecuta tareas solas, en horarios fijos. En HuellaVet hay tres tareas así:
+- el motor de recomendaciones, que se ejecuta una vez por día (desde la Entrega 4);
+- el reintento de las operaciones pendientes entre módulos (desde la Entrega 4);
+- una visita a `/api/salud` cada 14 minutos, para que Render y Aiven no apaguen el sistema por falta de uso.
 
 **Por qué la elegimos:**
 - PHP solo se ejecuta cuando alguien hace un pedido, así que necesitamos algo que lance estas tareas aunque nadie esté usando la página.
-- Viene incluida en el sistema operativo del servidor, así que no hay que instalar nada.
-- Es simple de configurar: se indica qué archivo PHP ejecutar y cada cuánto.
+- El plan gratuito de Render no permite programar tareas. GitHub Actions es gratis para repositorios públicos y ya usamos GitHub para el código.
+- Cada tarea es un archivo de texto en el repositorio que dice qué dirección llamar y cada cuánto. La llamada lleva un token secreto, guardado en GitHub.
+
+## Plataformas de despliegue
+
+Las tres son gratuitas y no piden tarjeta de crédito.
+
+### Vercel
+
+**Qué es:** la plataforma donde se publica el frontend (las páginas HTML, CSS y JavaScript). Además reenvía a Render todos los pedidos que empiezan con `/api/`.
+
+**Por qué la elegimos:**
+- Las páginas siempre están disponibles y cargan rápido, aunque el backend esté dormido o caído. Así el inicio, la información de contacto y el botón de WhatsApp para pedir turno siguen funcionando.
+- Gracias al reenvío de `/api/`, el navegador ve la página y la API en una misma dirección. Así la cookie de sesión funciona sin cambios y no hace falta habilitar CORS (ver `SEGURIDAD.md`).
+- Pone el HTTPS solo y publica cada cambio que se sube a GitHub. El grupo ya la conoce.
+
+### Render
+
+**Qué es:** la plataforma donde corre el backend: un único servicio web con el contenedor de Docker, donde están Nginx y los cinco módulos.
+
+**Por qué la elegimos:**
+- Su plan gratuito ejecuta contenedores de Docker, que es lo que necesita PHP con Nginx. Vercel solo corre PHP con un complemento no oficial, y Railway ya no tiene plan gratuito.
+- Pone el HTTPS solo y vuelve a desplegar cada cambio que se sube a GitHub.
+- Usamos un solo servicio porque el plan gratuito da 750 horas por mes para toda la cuenta: alcanza para un servicio prendido todo el mes, no para cinco. Dentro del contenedor, cada módulo sigue siendo un proceso separado: si uno falla, los demás siguen atendiendo.
+- **Limitación:** si pasan 15 minutos sin visitas, Render lo apaga y la siguiente visita tarda alrededor de un minuto en responder. La visita automática de GitHub Actions lo evita.
+
+### Aiven
+
+**Qué es:** la plataforma donde está la base de datos MySQL.
+
+**Por qué la elegimos:**
+- Es MySQL de verdad, la base que elegimos, y su plan gratuito no pide tarjeta.
+- Trae copias de seguridad automáticas y exige conexión cifrada, que es lo que pide el documento de seguridad.
+- **Limitaciones:** tiene 1 GB de espacio, que alcanza para el proyecto con imágenes chicas. Además, apaga la base si no se usa por un tiempo, avisa por mail antes y se vuelve a prender desde su panel.
 
 ## Servicios externos
 
