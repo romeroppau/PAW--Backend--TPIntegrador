@@ -69,7 +69,7 @@ Siguiendo el programa de la materia, el backend se programa con **PHP puro, sin 
 
 **Qué es:** el servicio de GitHub que ejecuta tareas solas, en horarios fijos. En HuellaVet hay tres tareas así:
 - el motor de recomendaciones, que se ejecuta una vez por día (desde la Entrega 4);
-- el reintento de las operaciones pendientes entre módulos (desde la Entrega 4);
+- el vencimiento de las Huellitas que cumplen 12 meses, una vez por día (Entrega 5);
 - una visita a `/api/salud` cada 14 minutos, para que Render y Aiven no apaguen el sistema por falta de uso.
 
 **Por qué la elegimos:**

@@ -50,12 +50,20 @@ Los servicios externos son MercadoPago y WhatsApp. Las tareas programadas las di
   |---|---|---|
   | Inventario | `POST /internal/stock/descontar` | Pacientes |
   | Backend | `POST /internal/huellitas/acreditar` | Pacientes, Inventario, Adopciones |
-  | Backend | `POST /internal/huellitas/reservar` | Inventario |
+  | Backend | `POST /internal/huellitas/reservar` | Inventario, Pacientes |
+  | Backend | `POST /internal/huellitas/confirmar` | Inventario, Pacientes |
+  | Backend | `POST /internal/huellitas/liberar` | Inventario, Pacientes |
+  | Backend | `POST /internal/huellitas/devolucion` | Inventario |
   | Backend | `POST /internal/notificaciones` | Pacientes, Adopciones, Reportes |
   | Pacientes | `POST /internal/mascotas/{id}/transferir` | Adopciones |
 
+  El funcionamiento de los endpoints de Huellitas está en `huellitas.md`.
+
 - Las llamadas internas entre módulos van por HTTP a la entrada interna de Nginx en `127.0.0.1`: no salen del contenedor.
-- **Tareas programadas** (el motor de recomendaciones y los reintentos de operaciones pendientes, desde la Entrega 4): GitHub Actions las dispara llamando a `/api/tareas/...`.
+- **Si el módulo destino no responde, nada queda a medias:**
+  - **si la llamada es necesaria para la operación** (descontar stock, reservar o confirmar Huellitas, transferir la mascota), la operación entera se cancela y el usuario ve un mensaje para reintentar. Por ejemplo, si Inventario no responde, la consulta queda abierta y el veterinario vuelve a tocar "Finalizar consulta";
+  - **si es un efecto secundario** (acreditar Huellitas, enviar un aviso), la operación principal se completa y se muestra una advertencia con un botón para reintentarlo. Si el aviso de pago de MercadoPago no se puede procesar, se le responde con error y MercadoPago lo vuelve a enviar más tarde.
+- **Tareas programadas** (el motor de recomendaciones y el vencimiento diario de las Huellitas): GitHub Actions las dispara llamando a `/api/tareas/...`.
   - Esas rutas exigen un **token de tareas** propio en el header `X-Task-Token`.
   - El token se guarda en los secretos de GitHub y en las variables de entorno de Render.
 - **Webhook de MercadoPago** (aviso HTTP que los servidores de MercadoPago le mandan a una URL nuestra cuando cambia el estado de un pago).
@@ -121,7 +129,7 @@ Los servicios externos son MercadoPago y WhatsApp. Las tareas programadas las di
   - las respuestas no incluyen campos internos, como el hash de la contraseña o datos de contacto de otros usuarios;
   - los errores no muestran el stack trace ni el SQL.
 - Llamadas internas:
-  - cada una lleva un `idOperacion` único, para que un reintento desde `operacion_pendiente` no descuente stock ni acredite puntos dos veces;
+  - cada una lleva un `idOperacion` único. Si el mismo pedido llega dos veces (un reintento del usuario o un aviso repetido de MercadoPago), el destino lo aplica una sola vez: no descuenta stock ni mueve Huellitas dos veces;
   - el cuerpo se valida igual que en un endpoint público;
   - el timeout es de 3 segundos.
 - Registro de auditoría:
@@ -131,7 +139,7 @@ Los servicios externos son MercadoPago y WhatsApp. Las tareas programadas las di
   - nunca se registran contraseñas, tokens ni datos de pago.
 
 ## Ciclo de vida del software
-- **Diseño:** decisiones de arquitectura descritas arriba: el API Gateway (Nginx) como única puerta a los módulos, tokens de servicio entre módulos, un usuario de MySQL por módulo y la tabla de operaciones pendientes.
+- **Diseño:** decisiones de arquitectura descritas arriba: el API Gateway (Nginx) como única puerta a los módulos, tokens de servicio entre módulos, un usuario de MySQL por módulo e `idOperacion` único en cada llamada interna.
 - **Desarrollo:**
   - revisión de dependencias de terceros con `composer audit` (comando de PHP que compara las librerías del proyecto con una base de vulnerabilidades conocidas);
   - los secretos van en el `.env` de cada integrante y en las variables de entorno de Render, siempre fuera del repositorio, y hay un `.env.example` en el repo;
