@@ -105,7 +105,8 @@ Los servicios externos son MercadoPago y WhatsApp. Las tareas programadas las di
 - Registro:
   - el registro público nunca deja elegir el rol `VETERINARIO`: el veterinario se crea solo con un script de carga inicial, que se ejecuta desde la consola y toma sus datos de variables de entorno;
   - clientes y rescatistas se registran por endpoints separados, y cada uno valida solo sus propios campos. El rol lo pone el servidor según el endpoint, nunca lo manda el usuario;
-  - un rescatista siempre se crea en estado `PENDIENTE`. Puede iniciar sesión en cualquier estado, pero solo publica en adopciones si está `APROBADO`.
+  - un rescatista siempre se crea en estado `PENDIENTE`. Puede iniciar sesión en cualquier estado, pero solo publica en adopciones si está `APROBADO`;
+  - si el email ya tiene una cuenta, el registro lo informa ("Ya existe una cuenta con ese email"). Esto revela que el email está registrado, pero es un límite aceptado: sin ese mensaje, la persona no entendería por qué no puede registrarse. El login, en cambio, nunca lo revela.
 - Login:
   - el error es el mismo para email y para contraseña ("Email o contraseña incorrectos"), y también para una cuenta bloqueada, así no se revela qué emails están registrados;
   - 5 intentos fallidos en 15 minutos bloquean el login de esa cuenta durante 15 minutos. Los 15 minutos se cuentan desde el primer fallo (columna `primer_fallo_en` de `usuario`); un login correcto reinicia el contador.
