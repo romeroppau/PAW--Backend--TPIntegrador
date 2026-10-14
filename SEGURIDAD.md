@@ -102,21 +102,33 @@ Los servicios externos son MercadoPago y WhatsApp. Las tareas programadas las di
 - Contraseñas guardadas con hash **bcrypt** (algoritmo de hash pensado para contraseñas: es lento a propósito y agrega una sal aleatoria, así que es muy costoso adivinarlas por fuerza bruta).
   - Se usa con costo 12.
   - Nunca se guardan en texto plano ni con MD5 o SHA-1.
+- Registro:
+  - el registro público nunca deja elegir el rol `VETERINARIO`: el veterinario se crea solo con un script de carga inicial, que se ejecuta desde la consola y toma sus datos de variables de entorno;
+  - clientes y rescatistas se registran por endpoints separados, y cada uno valida solo sus propios campos. El rol lo pone el servidor según el endpoint, nunca lo manda el usuario;
+  - un rescatista siempre se crea en estado `PENDIENTE`. Puede iniciar sesión en cualquier estado, pero solo publica en adopciones si está `APROBADO`.
 - Login:
-  - el error es el mismo para email y para contraseña ("Email o contraseña incorrectos");
-  - 5 intentos fallidos en 15 minutos bloquean el login de esa cuenta durante 15 minutos.
+  - el error es el mismo para email y para contraseña ("Email o contraseña incorrectos"), y también para una cuenta bloqueada, así no se revela qué emails están registrados;
+  - 5 intentos fallidos en 15 minutos bloquean el login de esa cuenta durante 15 minutos. Los 15 minutos se cuentan desde el primer fallo (columna `primer_fallo_en` de `usuario`); un login correcto reinicia el contador.
 - Autenticación con **JWT** (JSON Web Token: un texto firmado que identifica al usuario que inició sesión; cualquiera puede leer su contenido, pero nadie puede modificarlo sin invalidar la firma).
   - Backend lo firma con su clave privada (RS256), y los otros cuatro módulos lo verifican con la clave pública.
-  - Expira en 1 hora y solo lleva el `id` y el `rol`.
+  - Expira en 12 horas y solo lleva el `id`, el `rol` y el token CSRF (ver abajo).
+  - La sesión no se renueva sola: cuando vence, el usuario vuelve a iniciar sesión.
   - Se guarda en una **cookie `HttpOnly`, `Secure` y `SameSite=Strict`**: JavaScript no puede leerla, solo viaja por HTTPS y el navegador no la manda en pedidos que vienen de otros sitios. Esto último protege contra **CSRF** (que otro sitio haga acciones en HuellaVet usando la sesión del usuario).
   - La cookie queda asociada a `huellavet.vercel.app`, porque para el navegador la API está en esa misma dirección.
+  - El logout borra la cookie. Como el JWT no se guarda en el servidor, no se puede anular: un token copiado seguiría sirviendo hasta que venza. Es un límite aceptado de este diseño.
   - **Ejemplo:**
     1. La clienta Ana (id 15) inicia sesión. El pedido pasa por Vercel y por Nginx, y llega a Backend, que verifica su contraseña.
-    2. Backend le devuelve un JWT firmado con su clave privada, cuyo contenido es `{"id": 15, "rol": "CLIENTE", "exp": <en 1 hora>}`. El navegador lo guarda en una cookie.
+    2. Backend le devuelve un JWT firmado con su clave privada, cuyo contenido es `{"id": 15, "rol": "CLIENTE", "csrf": "<valor aleatorio>", "exp": <en 12 horas>}`. El navegador lo guarda en una cookie.
     3. Ana abre "Mis mascotas". El navegador pide `GET /api/pacientes/mascotas` y manda la cookie automáticamente.
     4. Pacientes verifica la firma con la clave pública de Backend, sin preguntarle nada a Backend. Lee que es el id 15 con rol CLIENTE y devuelve solo las mascotas de Ana.
     5. Si Ana modifica el token para decir `"id": 16`, la firma deja de coincidir y Pacientes lo rechaza.
     6. Si el proceso de Backend se cae, Pacientes puede seguir verificando el token, porque tiene la clave pública.
+- Token **CSRF**, además de `SameSite=Strict`:
+  - al iniciar sesión (y al registrarse, porque el registro deja la sesión iniciada), Backend genera un valor aleatorio (`random_bytes`), lo guarda dentro del JWT y también lo devuelve en el JSON de la respuesta. `GET /api/auth/yo` lo vuelve a devolver, por si la página se recarga;
+  - el frontend lo guarda en memoria y lo manda en el header `X-CSRF-Token` en todo pedido `POST`, `PUT` o `DELETE`;
+  - cada módulo verifica la firma del JWT y compara ese header con el valor que trae el JWT (`hash_equals`). Si no coinciden, responde `403`;
+  - funciona porque otro sitio puede hacer que el navegador mande la cookie, pero no puede leer el valor del token para ponerlo en el header;
+  - login y registro no llevan token: todavía no hay una sesión que proteger, y el token se genera justamente en ese momento.
 - Control de acceso validado en cada módulo, no solo en el frontend:
   - **por rol:** solo el veterinario carga consultas, administra el stock, modera y aprueba rescatistas; solo un rescatista `APROBADO` publica en adopciones;
   - **por dueño:** un cliente solo ve sus mascotas, turnos, facturas y Huellitas; un rescatista solo ve las postulaciones de sus publicaciones.
