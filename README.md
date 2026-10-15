@@ -13,6 +13,7 @@ Repositorio Backend del Trabajo Práctico Integrador de **Programación en Ambie
 
 ## Documentación
 - [Seguridad](./SEGURIDAD.md)
+- [Contrato de la API de autenticación](./docs/api/contrato.md)
 
 ## Cómo correrlo
 
