@@ -57,7 +57,9 @@ Nunca se devuelve el hash de la contraseña ni otros campos internos.
 
 ### Validación de campos
 
-Se aplica en los dos registros. Antes de validar, se quitan los espacios al principio y al final.
+Se aplica en los dos registros. Antes de validar, se quitan los espacios al principio y al final de cada campo, salvo de la contraseña.
+
+
 
 | Campo | Regla | Mensaje si falta | Mensaje si es inválido |
 |---|---|---|---|

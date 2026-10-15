@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<phpunit bootstrap="tests/bootstrap.php" colors="true">
+    <testsuites>
+        <testsuite name="Backend">
+            <directory>tests</directory>
+        </testsuite>
+    </testsuites>
+</phpunit>
+
+<!-- esto ayuda a phpunit a definir donde estan las pruebas y que cargar antes de empezar(la clase kwt y la clase auth) -->
