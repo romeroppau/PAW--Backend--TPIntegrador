@@ -4,6 +4,8 @@ Qué recibe y qué devuelve cada endpoint de autenticación. El frontend y los d
 
 Las reglas de seguridad detrás de estos endpoints están en [SEGURIDAD.md](../../SEGURIDAD.md).
 
+Las reglas generales que valen para todos los modulos (formato JSON,formato de errores, codigos HTTP y uso del token CSRF) estan en [CONTRATO_API_ApiGateway.md](https://github.com/romeroppau/PAW--ApiGateway--TPIntegrador/blob/main/api/CONTRATO_API_ApiGateway.md). 
+
 ## Resumen
 
 | Método y ruta | Quién | Para qué |
@@ -17,11 +19,6 @@ Las reglas de seguridad detrás de estos endpoints están en [SEGURIDAD.md](../.
 El veterinario no tiene endpoint de registro: se crea con el script `scripts/crear_veterinario.php`.
 
 ## Reglas generales
-
-### Formato
-
-- Los pedidos y las respuestas van en JSON (`Content-Type: application/json`), salvo las respuestas `204`, que no tienen cuerpo.
-- Si el cuerpo no es un JSON válido, la respuesta es `400` con `{"error": "El cuerpo del pedido no es un JSON válido"}`.
 
 ### Sesión
 
@@ -39,7 +36,6 @@ El veterinario no tiene endpoint de registro: se crea con el script `scripts/cre
 ### Token CSRF
 
 - El login, los dos registros y `GET /api/auth/yo` devuelven el campo `csrf` en el JSON. Es el mismo valor que está dentro del JWT.
-- Todo pedido `POST`, `PUT` o `DELETE` con sesión tiene que mandar ese valor en el header **`X-CSRF-Token`**. Si falta o no coincide, la respuesta es `403`.
 - El login y los registros no lo llevan, porque todavía no hay sesión.
 
 ### La "sesión" que devuelven varios endpoints
@@ -58,27 +54,6 @@ El login, los dos registros y `GET /api/auth/yo` devuelven siempre el mismo obje
 
 Nunca se devuelve el hash de la contraseña ni otros campos internos.
 
-### Errores
-
-Todos los errores tienen este formato:
-
-```json
-{
-  "error": "Mensaje general",
-  "campos": { "email": "El email no es válido" }
-}
-```
-
-- `campos` solo aparece cuando falla la validación de un formulario. Tiene un mensaje por cada campo con error, para mostrarlo al lado de ese campo.
-- Nunca se devuelven detalles internos (errores de PHP o de MySQL, SQL, nombres de tablas).
-
-| Código | Cuándo |
-|---|---|
-| `400` | Datos inválidos o faltantes |
-| `401` | No hay sesión, el JWT venció o fue alterado, o el login falló |
-| `403` | Hay sesión pero el rol no tiene permiso, o falta o no coincide el token CSRF |
-| `409` | El email ya tiene una cuenta |
-| `500` | Error inesperado del servidor: `{"error": "Ocurrió un error inesperado. Probá de nuevo más tarde"}` |
 
 ### Validación de campos
 
@@ -238,8 +213,8 @@ Set-Cookie: huellavet_sesion=; Max-Age=0; Path=/; Secure; HttpOnly; SameSite=Str
 
 **Errores:**
 
-- `401`, si no hay sesión o venció: `{ "error": "No hay sesión iniciada" }`. Para el frontend, el resultado es el mismo: el usuario queda sin sesión.
-- `403`, si falta o no coincide el token CSRF: `{ "error": "Pedido no válido" }`.
+- `401`, si no hay sesión o venció: `{ "error": "No autenticado" }`. Para el frontend, el resultado es el mismo: el usuario queda sin sesión.
+- `403`, si falta o no coincide el token CSRF: `{ "error": "Token CSRF inválido" }`.
 
 ---
 
@@ -263,22 +238,6 @@ Sirve para saber quién está logueado al cargar cualquier página: con el `rol`
 
 **Errores:**
 
-- `401`, si no hay sesión, venció o el JWT fue alterado: `{ "error": "No hay sesión iniciada" }`.
+- `401`, si no hay sesión, venció o el JWT fue alterado: `{ "error": "No autenticado" }`.
 
 ---
-
-## Para los demás módulos
-
-Para proteger un endpoint, cada módulo usa las funciones de `comun/`:
-
-```php
-$usuario = requerirRol(['VETERINARIO']); // 401 si no hay sesión, 403 si el rol no corresponde
-verificarCsrf($usuario);                 // solo en POST, PUT y DELETE: 403 si el token falta o no coincide
-// $usuario['id'] y $usuario['rol'] identifican a quien hace el pedido
-```
-
-Responden con los mismos `401` y `403` de este documento:
-
-- `401`: `{ "error": "No hay sesión iniciada" }`
-- `403` por rol: `{ "error": "No tenés permiso para esta acción" }`
-- `403` por CSRF: `{ "error": "Pedido no válido" }`
