@@ -17,44 +17,103 @@ Repositorio Backend del Trabajo Práctico Integrador de **Programación en Ambie
 
 ## Cómo correrlo
 
-> Como el backend todavía está en etapa de diseño: este repositorio contiene la documentación y el código se irá incorporando durante la cursada. Estos pasos describen cómo se va a levantar el módulo según el stack definido en [TECNOLOGíA.md](./TECNOLOGíA.md), pero tener en cuenta que se va a ir modificando y ajustando pasos a medida que se agregue el código.
+Este repo es el módulo **Backend**: registro, inicio de sesión y sesión de los usuarios (clientes, rescatistas y el veterinario). Los endpoints están en el [contrato de la API](./docs/api/contrato.md).
 
-### Pasos
+El módulo no se levanta solo: corre adentro del contenedor que arma el repo **ApiGateway**, junto con Nginx, el código común (`comun/`) y los demás módulos. Por eso todo se levanta desde ApiGateway, con Docker.
 
-1. Clonar el repositorio:
+### Qué hace falta
 
-```bash
-   git clone https://github.com/romeroppau/PAW--Backend--TPIntegrador.git
-   cd PAW--Backend--TPIntegrador
-```
+- [Docker Desktop](https://www.docker.com/products/docker-desktop/)
+- PHP 8 y [Composer](https://getcomposer.org/), solo para correr las pruebas
 
-2. Instalar las dependencias de desarrollo:
+### Levantar el sistema
 
-```bash
-   composer install
-```
+1. Clonar ApiGateway **con los submódulos** (así trae también este repo, en la carpeta `Backend/`):
 
-3. Crear la base de datos en MySQL:
+   ```bash
+   git clone --recurse-submodules https://github.com/romeroppau/PAW--ApiGateway--TPIntegrador.git
+   cd PAW--ApiGateway--TPIntegrador
+   ```
 
-```sql
-   CREATE DATABASE huellavet CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
-```
+2. Copiar el archivo de ejemplo de las variables y completarlo:
 
-4. Configurar la conexión a la base de datos (host, puerto, nombre de la base, usuario y contraseña). Las credenciales no se suben al repositorio.
+   ```bash
+   cp .env.example .env
+   ```
 
-5. Levantar el módulo con el servidor integrado de PHP, escuchando solo en localhost como indica [SEGURIDAD.md](./SEGURIDAD.md):
+   El `.env` tiene las contraseñas y las claves, así que **nunca se sube** al repositorio. Las claves del JWT se generan así (en una carpeta que no sea de ningún repo), y las dos líneas de `claves.env` se copian al `.env`:
 
-```bash
-   php -S 127.0.0.1:3001
-```
+   ```bash
+   openssl genpkey -algorithm RSA -pkeyopt rsa_keygen_bits:2048 -out jwt_privada.pem
+   openssl pkey -in jwt_privada.pem -pubout -out jwt_publica.pem
+   printf 'JWT_PRIVATE_KEY="%s"\n' "$(awk 'NF {printf "%s\\n", $0}' jwt_privada.pem)" > claves.env
+   printf 'JWT_PUBLIC_KEY="%s"\n' "$(awk 'NF {printf "%s\\n", $0}' jwt_publica.pem)" >> claves.env
+   ```
 
-6. Para el sistema completo, levantar cada módulo en su puerto y configurar Nginx para que reenvíe `/api/...` al módulo correspondiente.
+3. Levantar los contenedores (la aplicación y MySQL):
+
+   ```bash
+   docker compose up -d --build
+   ```
+
+4. Crear las tablas, los usuarios de MySQL de cada módulo y sus permisos:
+
+   ```bash
+   docker compose --profile tools run --rm migrator
+   ```
+
+5. Crear al veterinario. No se registra por la web: se carga con un script. Se cambian los datos de ejemplo por los reales:
+
+   ```bash
+   docker compose exec app sh -c 'DB_USER="$BACKEND_DB_USER" DB_PASSWORD="$BACKEND_DB_PASSWORD" VET_NOMBRE="Nombre del veterinario" VET_EMAIL="vet@huellavet.com" VET_PASSWORD="una-contraseña-segura" php /app/Backend/scripts/crear_veterinario.php'
+   ```
+
+   Si el veterinario ya existe, el script no hace nada, así que se puede correr más de una vez.
+
+6. Comprobar que el módulo responde:
+
+   ```bash
+   curl http://localhost:10000/api/backend/salud
+   ```
+
+   Tiene que devolver `{"estado":"funciona","modulo":"Backend"}`.
+
+> **En Render:** si nadie entró en los últimos 15 minutos, el servicio se apaga y la primera visita tarda alrededor de un minuto en responder. Conviene abrir la página unos minutos antes de mostrarla.
 
 ### Pruebas
 
+Las pruebas automáticas usan PHPUnit. Desde la carpeta `Backend/` (adentro de ApiGateway):
+
 ```bash
-./vendor/bin/phpunit
+composer install
+vendor/bin/phpunit --testdox
 ```
+
+`composer install` se corre una sola vez: instala PHPUnit en la carpeta `vendor/`, que tampoco se sube al repositorio.
+
+Si se trabaja con este repo suelto (fuera de ApiGateway), hay que indicar dónde está la carpeta `comun/` de ApiGateway:
+
+```bash
+COMUN_DIR="ruta/a/PAW--ApiGateway--TPIntegrador/comun" vendor/bin/phpunit --testdox
+```
+
+Hoy hay pruebas del JWT (que el token que crea Backend lo acepte la clase `Auth` de `comun/`, y que rechace tokens alterados, vencidos o firmados con otra clave) y de las validaciones del registro.
+
+### Cómo está organizado el código
+
+| Archivo | Qué hace |
+| --- | --- |
+| `src/Index.php` | Punto de entrada: carga el código, registra las rutas y responde 500 si algo falla de forma inesperada |
+| `src/AuthControlador.php` | Un método por endpoint: registros, login, `/yo`, logout y salud |
+| `src/Jwt.php` | Crea el JWT de la sesión, firmado con la clave privada |
+| `src/Sesion.php` | Arma la sesión: el código CSRF, el JWT y la cookie |
+| `src/ValidadorRegistro.php` | Valida los datos de los registros |
+| `src/UsuarioRepositorio.php` | Todas las consultas a la tabla `usuario`, y el bloqueo por intentos fallidos |
+| `src/Cliente.php`, `src/Veterinario.php`, `src/Rescatista.php` | Los tres tipos de usuario, como en el diagrama de clases |
+| `scripts/crear_veterinario.php` | Script para cargar al veterinario |
+| `tests/` | Las pruebas automáticas |
+
+La tabla `usuario` se crea con la migración `base/001_backend_usuario.sql`, que está en el repo ApiGateway.
 
 ---
 
