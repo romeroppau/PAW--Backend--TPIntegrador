@@ -22,3 +22,4 @@ require_once "$comun/auth.php";
 
 // Las clases de Backend.
 require_once __DIR__ . '/../src/Jwt.php';
+require_once __DIR__ . '/../src/ValidadorRegistro.php';
