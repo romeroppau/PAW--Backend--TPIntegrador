@@ -1,4 +1,3 @@
-
 <?php
 
 // 1. Cargar las herramientas compartidas.
