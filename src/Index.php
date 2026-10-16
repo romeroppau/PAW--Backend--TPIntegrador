@@ -64,7 +64,10 @@ try {
     );
 } catch (Throwable $error) {
     Logger::error(
-        'Error inesperado en Backend: ' . get_class($error)
+        'Error inesperado en Backend: '
+        . get_class($error)
+        . ' - '
+        . $error->getMessage()
     );
 
     Response::error(
