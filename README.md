@@ -97,7 +97,19 @@ Si se trabaja con este repo suelto (fuera de ApiGateway), hay que indicar dónde
 COMUN_DIR="ruta/a/PAW--ApiGateway--TPIntegrador/comun" vendor/bin/phpunit --testdox
 ```
 
-Hoy hay pruebas del JWT (que el token que crea Backend lo acepte la clase `Auth` de `comun/`, y que rechace tokens alterados, vencidos o firmados con otra clave) y de las validaciones del registro.
+Hay tres grupos de pruebas:
+- **JWT:** que el token que crea Backend lo acepte la clase `Auth` de `comun/`, y que rechace tokens alterados, vencidos o firmados con otra clave.
+- **Validaciones del registro:** nombre, email, contraseña, teléfono argentino y organización.
+- **Usuarios en la base:** registro, email repetido, contraseña hasheada y bloqueo después de 5 intentos fallidos.
+
+Las de la base usan un **MySQL de prueba local** (nunca la base de Aiven, porque las pruebas crean y borran datos). Antes de correrlas, desde la carpeta de ApiGateway:
+
+```bash
+docker compose --profile local up -d db
+export TEST_DB_PASSWORD="$(grep '^MYSQL_ROOT_PASSWORD=' .env | cut -d= -f2-)"
+```
+
+Si el MySQL de prueba no está levantado, esas pruebas se saltean y las demás corren igual.
 
 ### Cómo está organizado el código
 
