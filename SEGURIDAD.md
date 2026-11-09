@@ -38,12 +38,13 @@ Los servicios externos son MercadoPago y WhatsApp. Las tareas programadas las di
     4. **Sin CORS**, ese JavaScript podría leer la respuesta con los datos de Ana y mandárselos al dueño del sitio trucho.
     5. **Con CORS**, antes de dejar que la página lea la respuesta, el navegador se fija desde qué orígenes permite HuellaVet que se lean sus datos. HuellaVet no permite ningún origen ajeno. Como la página que pregunta es de `sitio-trucho.com`, el navegador la bloquea.
 - Las **rutas internas** `/internal/*` (endpoints que solo usan los módulos entre sí) quedan bloqueadas en el API Gateway (Nginx) para todo pedido que llegue de afuera: reciben `404`.
-  - Nginx tiene dos entradas: la **pública**, la que recibe los pedidos de Render, que bloquea `/internal/*`; y una **interna**, que escucha solo en `127.0.0.1` y la usan los módulos para llamarse entre sí.
+  - Nginx tiene una sola entrada, la **pública**, que recibe los pedidos de Render y bloquea `/internal/*`. Los módulos no pasan por ella para llamarse entre sí: llaman directo al proceso del otro módulo en `127.0.0.1` (ver abajo).
 - La comunicación entre módulos se autentica con **tokens de servicio**.
   - Un token de servicio es una contraseña larga y aleatoria que identifica a un módulo, no a una persona.
   - No se obtiene de ningún servicio en tiempo de ejecución. El equipo lo genera una sola vez, por ejemplo con `openssl rand -hex 32`, y lo carga en las variables de entorno del módulo que llama y de los módulos que lo reciben (ver Sistema Operativo).
-  - Cada módulo que hace llamadas internas tiene su propio token y lo envía en el header `X-Service-Token`.
-  - El módulo destino verifica el token y que ese módulo tenga permiso para el endpoint. Si el token no es válido responde `401`, y si el módulo no tiene permiso, `403`.
+  - El módulo que llama lo envía en el header `X-Servicio-Token`, y el destino lo compara con el suyo. Si falta o no coincide, responde `401`.
+  - **Entrega 4:** hay un solo endpoint interno en uso, `POST /internal/stock/descontar` (Inventario), que Pacientes llama al finalizar una consulta, y un único token, `INTERNAL_TOKEN`. Solo lo reciben los procesos que lo usan (Pacientes, que llama, e Inventario, que lo recibe): el proceso del Gateway y el de Backend arrancan sin él (`env -u INTERNAL_TOKEN` en `docker/iniciar.sh`).
+  - Cuando se sumen los endpoints internos de las próximas entregas, cada módulo que llama va a tener su propio token, y el destino va a responder `403` si ese módulo no tiene permiso para el endpoint.
   - Los endpoints internos no aceptan el **JWT** de un usuario (ver Aplicación), y los públicos no aceptan tokens de servicio.
 
   | Destino | Endpoint interno | Quién puede llamarlo |
@@ -59,7 +60,7 @@ Los servicios externos son MercadoPago y WhatsApp. Las tareas programadas las di
 
   El funcionamiento de los endpoints de Huellitas está en `HUELLITAS.md`.
 
-- Las llamadas internas entre módulos van por HTTP a la entrada interna de Nginx en `127.0.0.1`: no salen del contenedor.
+- Las llamadas internas entre módulos van por HTTP directo al proceso del módulo destino en `127.0.0.1` (por ejemplo, Pacientes llama a Inventario en `127.0.0.1:9002`): no pasan por la entrada pública de Nginx ni salen del contenedor.
 - **Si el módulo destino no responde, nada queda a medias:**
   - **si la llamada es necesaria para la operación** (descontar stock, reservar o confirmar Huellitas, transferir la mascota), la operación entera se cancela y el usuario ve un mensaje para reintentar. Por ejemplo, si Inventario no responde, la consulta queda abierta y el veterinario vuelve a tocar "Finalizar consulta";
   - **si es un efecto secundario** (acreditar Huellitas, enviar un aviso), la operación principal se completa y se muestra una advertencia con un botón para reintentarlo. Si el aviso de pago de MercadoPago no se puede procesar, se le responde con error y MercadoPago lo vuelve a enviar más tarde.
@@ -81,6 +82,9 @@ Los servicios externos son MercadoPago y WhatsApp. Las tareas programadas las di
   - En Render se cargan desde su panel; en la computadora de cada integrante, desde un archivo **`.env`** (archivo de texto con esos mismos valores).
   - Nunca se suben al repositorio ni quedan dentro de la imagen del contenedor.
 - Render borra el disco del contenedor en cada reinicio, así que no se guarda nada importante ahí: las imágenes subidas (mascotas, publicaciones y productos) van a la base de datos.
+- **Cada proceso recibe solo los secretos que usa** (`docker/iniciar.sh` los saca con `env -u` antes de arrancarlo):
+  - la **clave privada del JWT** solo la tiene Backend, que es el único que firma sesiones. Inventario y Pacientes arrancan sin ella: solo pueden verificar sesiones con la clave pública, nunca crearlas;
+  - el **token entre servicios** (`INTERNAL_TOKEN`) solo lo tienen Pacientes e Inventario (ver Red).
 
 ## Motor de Base de Datos
 - Una única base MySQL, en Aiven. Cada módulo se conecta con su propio usuario de MySQL:
@@ -88,10 +92,21 @@ Los servicios externos son MercadoPago y WhatsApp. Las tareas programadas las di
   - con `SELECT` sobre las tablas de los demás módulos, para las lecturas directas que define la arquitectura;
   - Reportes solo tiene `SELECT`;
   - ningún módulo usa el usuario administrador de Aiven.
+- **Usuario `pacientes`** (Entrega 4). Los permisos están en `base/permisos/` del repo ApiGateway, un archivo por migración:
+  - escribe (`SELECT`, `INSERT`, `UPDATE`) `mascota`, `turno`, `evento_sanitario`, `consulta` y `factura_consulta`. No tiene `DELETE`: una mascota se da de baja (baja lógica), un turno se cancela y una consulta o factura no se borran;
+  - sobre los ítems de una consulta abierta (`item_insumo_consulta`, `item_producto_consulta`) tiene también `DELETE`, porque el veterinario puede quitar un ítem antes de finalizar;
+  - solo lee `usuario` (el dueño de cada mascota), `producto` e `insumo` (el precio y el costo al agregarlos a una consulta) y `plan_sanitario`;
+  - **no puede tocar el stock**: lo descuenta Inventario, cuando Pacientes se lo pide por el endpoint interno.
 - La conexión entre los módulos y la base viaja por internet, así que **va siempre cifrada con SSL** (Aiven lo exige) y se verifica el certificado de Aiven.
 - Si el plan gratuito lo permite, se activa el **filtro de IP** de Aiven, para que solo acepte conexiones desde las direcciones de Render.
 - **Consultas parametrizadas** (los datos del usuario se pasan aparte de la sentencia SQL y nunca se interpretan como código) u ORM para evitar **inyección SQL** (meter código SQL dentro de un dato de entrada).
 - **Transacciones** (varias operaciones que se guardan todas juntas o no se guarda ninguna) para lo que toca varias tablas. Por ejemplo, la consulta, sus ítems y su factura.
+- **Stock** (Entrega 4):
+  - **nunca queda negativo:** la columna es `INT UNSIGNED` y el descuento se hace con `UPDATE ... SET stock = stock - ? WHERE id = ? AND stock >= ?`. Si no alcanza, no se descuenta;
+  - el descuento de una consulta es **todo o nada**: todos los insumos y productos se descuentan en una sola transacción. Si a uno le falta stock, no se descuenta ninguno y la consulta no se finaliza;
+  - **sin descontar dos veces:** cada ítem lleva un `id_operacion`, que es único en `movimiento_inventario`. Si el mismo pedido llega de nuevo (por ejemplo, un doble clic en "Finalizar consulta"), la base rechaza el movimiento repetido y no se descuenta otra vez;
+  - **bloqueo de fila** (`SELECT ... FOR UPDATE`: la fila queda reservada hasta que termina la transacción, y otro pedido sobre la misma fila espera). Se usa en la carga y el retiro de stock de insumos, y al agregar ítems a una consulta: si dos pedidos llegan al mismo tiempo, el segundo trabaja con el valor que dejó el primero, así ninguno se pisa;
+  - cada movimiento de inventario es de un producto o de un insumo, nunca de los dos ni de ninguno (regla `CHECK` en la tabla).
 - Como la base es única, es el único punto de falla aceptado del diseño:
   - Aiven hace copias de seguridad automáticas;
   - además, una copia propia por semana (exportada con `mysqldump`), guardada fuera de Aiven y con acceso restringido;
@@ -133,10 +148,18 @@ Los servicios externos son MercadoPago y WhatsApp. Las tareas programadas las di
 - Control de acceso validado en cada módulo, no solo en el frontend:
   - **por rol:** solo el veterinario carga consultas, administra el stock, modera y aprueba rescatistas; solo un rescatista `APROBADO` publica en adopciones;
   - **por dueño:** un cliente solo ve sus mascotas, turnos, facturas y Huellitas; un rescatista solo ve las postulaciones de sus publicaciones.
+  - **Entrega 4, lo implementado:**
+    - mascotas: el cliente da de alta, edita y da de baja solo las suyas. El dueño sale siempre del JWT, nunca del pedido. Si un cliente pide la mascota de otro, recibe `404` (no `403`), igual que si no existiera, para no revelar que existe. Lo mismo vale para el calendario sanitario;
+    - turnos: solo el veterinario los crea, los cancela y los marca ausentes, siempre con token CSRF. El veterinario del turno sale de la sesión. El cliente solo ve los turnos de sus mascotas;
+    - consultas: solo el veterinario las atiende, les agrega ítems y las finaliza, con token CSRF;
+    - insumos: todas sus rutas son solo del veterinario (no tienen rutas públicas en `/api/tienda/`), y las que cambian datos piden token CSRF.
+- La sesión, la cookie (`HttpOnly`, `Secure`, `SameSite=Strict`), el token CSRF y el hash de las contraseñas siguen igual que en la Entrega 3: todos los módulos nuevos usan las mismas funciones de `comun/` (`Auth::requerirRol` y `Auth::verificarCsrf`).
 - Validación de entradas en el servidor:
   - tipo, largo y rango de cada campo, y rechazo de los datos inválidos;
   - las imágenes solo pueden ser JPG, PNG o WEBP, de hasta 1 MB, y se guardan en la base;
-  - los precios y totales siempre los calcula el servidor.
+  - los precios y totales siempre los calcula el servidor;
+  - el **estado de un insumo** (disponible o en falta) lo calcula el servidor a partir del stock: el usuario nunca lo manda;
+  - en una consulta, la cantidad de un mismo insumo o producto tiene un tope de 100.000 **en total**, sumando todas las veces que se agregó.
 - Sanitización de salidas para prevenir **XSS** (que un usuario cargue código JavaScript en un texto y se ejecute en el navegador de otro):
   - el contenido escrito por usuarios (publicaciones, reseñas, postulaciones) se muestra escapado, nunca como HTML;
   - las respuestas no incluyen campos internos, como el hash de la contraseña o datos de contacto de otros usuarios;
@@ -161,11 +184,20 @@ Los servicios externos son MercadoPago y WhatsApp. Las tareas programadas las di
   - pruebas de control de acceso por rol y por dueño;
   - pruebas de inyección SQL y XSS;
   - pruebas de las llamadas internas sin token, con un token inválido y con un módulo sin permiso.
+  - **Entrega 4, lo implementado:** pruebas automáticas que corre **GitHub Actions** en cada push y pull request:
+    - **PHPUnit** en Backend, Inventario y Pacientes (por ejemplo: el JWT, los validadores, el cálculo de la factura y el calendario sanitario);
+    - **pruebas de punta a punta** (`pruebas/` del repo ApiGateway): levantan el sistema completo en Docker con una base de prueba y hacen pedidos con `curl`. Prueban, entre otras cosas, el `401` sin sesión, el `403` con otro rol o sin token CSRF, el `404` de la mascota de otro cliente, el stock insuficiente y el tope por ítem;
+    - en el frontend, el **validador del W3C** sobre todas las páginas y pruebas en el navegador (Playwright);
+    - si alguna falla, el pull request no se puede mergear.
 - **Despliegue:**
   - HTTPS de Vercel y Render;
   - módulos solo accesibles a través del API Gateway (Nginx);
   - conexión cifrada con la base;
   - **hardening del contenedor** (reducir lo que se puede atacar: imagen oficial y actualizada, solo los programas necesarios, cada programa con un usuario sin privilegios y un único puerto expuesto).
+  - **Entrega 4, lo implementado:**
+    - ramas **`dev` y `main` protegidas** en los siete repositorios: nada entra sin pull request y con las pruebas en verde. `main` es producción y solo recibe cambios desde `dev`;
+    - **entorno de desarrollo separado** (Render, Vercel y una base de Aiven propios), con secretos distintos a los de producción: una sesión de dev no sirve en producción. Todo se prueba ahí antes de pasar a `main`;
+    - los **datos de prueba** (`base/semillas/` del repo ApiGateway: cuentas, productos, insumos y turnos) se cargan solo en local, en las pruebas automáticas y en dev. El comando que los carga se niega a correr si la variable `ENTORNO` no es `local`, `dev` o `ci`.
 - **Mantenimiento:**
   - actualización de dependencias;
   - monitoreo de logs desde el panel de Render, en especial los logins fallidos y los rechazos de llamadas internas;
