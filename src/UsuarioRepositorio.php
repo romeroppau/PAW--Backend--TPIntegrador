@@ -86,6 +86,51 @@ class UsuarioRepositorio
         return (int) $this->db->lastInsertId();
     }
 
+    // ---------- Validación de rescatistas (Entrega 5) ----------
+
+    // Los rescatistas en ese estado (o todos, con null), los más viejos primero. Hasta 100.
+    public function listarRescatistas(?string $estado): array
+    {
+        $sql = "SELECT id, nombre, email, password_hash, telefono, rol, organizacion, estado_validacion
+                FROM usuario WHERE rol = 'RESCATISTA'";
+        $valores = [];
+
+        if ($estado !== null) {
+            $sql .= ' AND estado_validacion = ?';
+            $valores[] = $estado;
+        }
+
+        $consulta = $this->db->prepare($sql . ' ORDER BY id LIMIT 100');
+        $consulta->execute($valores);
+
+        return array_map(fn (array $fila) => $this->crearDesdeFila($fila), $consulta->fetchAll());
+    }
+
+    // Aprueba o rechaza a un rescatista PENDIENTE. Devuelve:
+    //   'OK'          si se cambió el estado;
+    //   'NO_EXISTE'   si no hay un rescatista con ese id;
+    //   'YA_VALIDADO' si ya estaba aprobado o rechazado (no se cambia: la decisión es una sola).
+    // La condición "sigue PENDIENTE" va en el mismo UPDATE: si dos veterinarios validan a la vez,
+    // solo uno cambia la fila y el otro recibe YA_VALIDADO.
+    public function validarRescatista(int $id, string $estado): string
+    {
+        if (!in_array($estado, ['APROBADO', 'RECHAZADO'], true)) {
+            throw new InvalidArgumentException("Estado de validación inválido: $estado");
+        }
+
+        $consulta = $this->db->prepare(
+            "UPDATE usuario SET estado_validacion = ?
+             WHERE id = ? AND rol = 'RESCATISTA' AND estado_validacion = 'PENDIENTE'"
+        );
+        $consulta->execute([$estado, $id]);
+
+        if ($consulta->rowCount() === 1) {
+            return 'OK';
+        }
+
+        return $this->buscarPorId($id) instanceof Rescatista ? 'YA_VALIDADO' : 'NO_EXISTE';
+    }
+
     // ---------- Bloqueo por intentos fallidos ----------
     // Regla (SEGURIDAD.md): 5 intentos fallidos en 15 minutos, contados desde el primer fallo,
     // bloquean la cuenta 15 minutos. Un login correcto reinicia el contador.

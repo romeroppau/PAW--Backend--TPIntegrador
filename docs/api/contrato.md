@@ -15,6 +15,9 @@ Las reglas generales que valen para todos los modulos (formato JSON,formato de e
 | `POST /api/auth/login` | Público | Iniciar sesión |
 | `POST /api/auth/logout` | Con sesión | Cerrar sesión |
 | `GET /api/auth/yo` | Con sesión | Datos del usuario actual, su rol y su token CSRF |
+| `GET /api/rescatistas` | Veterinario | Rescatistas por estado de validación (Entrega 5) |
+| `POST /api/rescatistas/{id}/aprobar` | Veterinario | Aprobar a un rescatista pendiente: desde ahí puede publicar en adopciones |
+| `POST /api/rescatistas/{id}/rechazar` | Veterinario | Rechazar a un rescatista pendiente |
 
 El veterinario no tiene endpoint de registro: se crea con el script `scripts/crear_veterinario.php`.
 
@@ -48,9 +51,12 @@ El login, los dos registros y `GET /api/auth/yo` devuelven siempre el mismo obje
   "nombre": "Ana Pérez",
   "email": "ana@mail.com",
   "rol": "CLIENTE",
+  "estado_validacion": null,
   "csrf": "9f2c4e...a71b"
 }
 ```
+
+`estado_validacion` (Entrega 5): para un rescatista, `PENDIENTE`, `APROBADO` o `RECHAZADO`; para los demás roles, `null`. Se lee de la base cada vez, así que en `/yo` se ve el cambio en cuanto el veterinario lo aprueba, sin volver a iniciar sesión. El JWT no lo lleva.
 
 Nunca se devuelve el hash de la contraseña ni otros campos internos.
 
@@ -234,6 +240,7 @@ Sirve para saber quién está logueado al cargar cualquier página: con el `rol`
   "nombre": "Ana Pérez",
   "email": "ana@mail.com",
   "rol": "CLIENTE",
+  "estado_validacion": null,
   "csrf": "5e8a21...0d4f"
 }
 ```
@@ -241,5 +248,45 @@ Sirve para saber quién está logueado al cargar cualquier página: con el `rol`
 **Errores:**
 
 - `401`, si no hay sesión, venció o el JWT fue alterado: `{ "error": "No autenticado" }`.
+
+---
+
+## Rescatistas (Entrega 5)
+
+La veterinaria valida a los rescatistas que se registran. Solo uno `APROBADO` publica en adopciones (lo controla el módulo Adopciones leyendo la base). La decisión es una sola: un rescatista ya aprobado o rechazado no cambia de estado. El circuito completo está en `docs/api/contrato-adopciones.md` del repo Adopciones.
+
+Las tres rutas exigen sesión de veterinario: sin sesión, `401`; con otro rol, `403`. Las dos de POST exigen además el header `X-CSRF-Token` (sin él, `403`).
+
+### Forma del rescatista
+
+```json
+{
+  "id": 105,
+  "nombre": "Rescatista Pendiente",
+  "email": "rescatista2@prueba.huellavet",
+  "telefono": "1155550105",
+  "organizacion": "Patitas al Rescate",
+  "estado_validacion": "PENDIENTE"
+}
+```
+
+`organizacion` puede ser `null`.
+
+### GET /api/rescatistas
+
+Parámetro opcional `estado`: `PENDIENTE` (por defecto), `APROBADO`, `RECHAZADO` o `TODOS`. Ordenados por id, los más viejos primero (hasta 100).
+
+- `200`: `{ "rescatistas": [ ... ] }`
+- `400`: `estado` no es uno de los cuatro.
+
+### POST /api/rescatistas/{id}/aprobar y POST /api/rescatistas/{id}/rechazar
+
+Sin cuerpo.
+
+- `200`: `{ "rescatista": { ... } }` con el estado nuevo.
+- `404`: `{ "error": "Rescatista no encontrado" }` si no existe, no es un rescatista o el id no es un número.
+- `409`: `{ "error": "El rescatista ya fue aprobado" }` (o "rechazado") si no estaba `PENDIENTE`.
+
+Cada validación queda en el log: qué rescatista, qué estado y qué veterinario.
 
 ---

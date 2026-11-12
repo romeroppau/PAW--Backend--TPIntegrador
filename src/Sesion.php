@@ -55,6 +55,8 @@ class Sesion
 
     // El objeto de sesión que devuelven el login, los registros y /yo (siempre el mismo, según el contrato).
     // Nunca incluye el hash de la contraseña.
+    // estado_validacion (Entrega 5): el del rescatista, para que el frontend sepa si puede publicar;
+    // null para los demás roles. Se lee de la base, así que se actualiza sin volver a iniciar sesión.
     public static function datos(Cliente|Veterinario|Rescatista $usuario, string $csrf): array
     {
         return [
@@ -62,6 +64,7 @@ class Sesion
             'nombre' => $usuario->getNombre(),
             'email' => $usuario->getEmail(),
             'rol' => $usuario->getRol(),
+            'estado_validacion' => $usuario instanceof Rescatista ? $usuario->getEstadoValidacion() : null,
             'csrf' => $csrf
         ];
     }

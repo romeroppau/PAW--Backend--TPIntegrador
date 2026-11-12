@@ -154,6 +154,53 @@ final class UsuarioRepositorioTest extends TestCase
         $this->assertSame(1, (int) self::$db->query("SELECT intentos_fallidos FROM usuario WHERE id = $id")->fetchColumn());
     }
 
+    // Grupo 5: validación de rescatistas (Entrega 5).
+    public function testListarRescatistasFiltraPorEstadoYNoTraeOtrosRoles(): void
+    {
+        $this->usuarios->insertarCliente('Ana Pérez', 'ana@mail.com', self::hash('clave12345'), '2323555555');
+        $pendiente = $this->usuarios->insertarRescatista('Juan Gómez', 'juan@mail.com', self::hash('clave12345'), '2323444444', 'Patitas');
+        $otro = $this->usuarios->insertarRescatista('Sol Ruiz', 'sol@mail.com', self::hash('clave12345'), '2323333333', null);
+        $this->usuarios->validarRescatista($otro, 'APROBADO');
+
+        $pendientes = $this->usuarios->listarRescatistas('PENDIENTE');
+        $this->assertCount(1, $pendientes);
+        $this->assertSame($pendiente, $pendientes[0]->getId());
+
+        $aprobados = $this->usuarios->listarRescatistas('APROBADO');
+        $this->assertCount(1, $aprobados);
+        $this->assertTrue($aprobados[0]->puedePublicar());
+
+        // null = todos los rescatistas, ordenados por id; el cliente no aparece.
+        $todos = $this->usuarios->listarRescatistas(null);
+        $this->assertSame([$pendiente, $otro], array_map(fn ($r) => $r->getId(), $todos));
+    }
+
+    public function testValidarUnRescatistaEsUnaSolaVez(): void
+    {
+        $id = $this->usuarios->insertarRescatista('Juan Gómez', 'juan@mail.com', self::hash('clave12345'), '2323444444', null);
+
+        $this->assertSame('OK', $this->usuarios->validarRescatista($id, 'RECHAZADO'));
+        $this->assertSame('RECHAZADO', $this->usuarios->buscarPorId($id)->getEstadoValidacion());
+
+        // Ya está decidido: ni aprobarlo ni volver a rechazarlo cambia nada.
+        $this->assertSame('YA_VALIDADO', $this->usuarios->validarRescatista($id, 'APROBADO'));
+        $this->assertSame('YA_VALIDADO', $this->usuarios->validarRescatista($id, 'RECHAZADO'));
+        $this->assertSame('RECHAZADO', $this->usuarios->buscarPorId($id)->getEstadoValidacion());
+    }
+
+    public function testSoloSeValidanRescatistas(): void
+    {
+        $cliente = $this->usuarios->insertarCliente('Ana Pérez', 'ana@mail.com', self::hash('clave12345'), '2323555555');
+
+        $this->assertSame('NO_EXISTE', $this->usuarios->validarRescatista($cliente, 'APROBADO'));
+        $this->assertSame('NO_EXISTE', $this->usuarios->validarRescatista(999999, 'APROBADO'));
+        // El cliente sigue sin estado de validación.
+        $this->assertNull(self::$db->query("SELECT estado_validacion FROM usuario WHERE id = $cliente")->fetchColumn());
+
+        $this->expectException(InvalidArgumentException::class);
+        $this->usuarios->validarRescatista($cliente, 'PENDIENTE');
+    }
+
 
     // Hashea con bcrypt de costo 4, el mínimo: en las pruebas no importa que sea lento a propósito,
     // y con costo 12 cada prueba tardaría bastante más. En la aplicación siempre es costo 12.
