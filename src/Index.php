@@ -22,6 +22,7 @@ require_once __DIR__ . '/../src/ValidadorRegistro.php';
 require_once __DIR__ . '/../src/Jwt.php';
 require_once __DIR__ . '/../src/Sesion.php';
 require_once __DIR__ . '/../src/AuthControlador.php';
+require_once __DIR__ . '/../src/RescatistaControlador.php';
 
 // 3. Crear el router y registrar las rutas.
 $router = new Router();
@@ -49,6 +50,22 @@ $router->get(
 $router->post(
     '/api/auth/logout',
     [AuthControlador::class, 'logout']
+);
+
+// Validación de rescatistas (veterinario).
+$router->get(
+    '/api/rescatistas',
+    [RescatistaControlador::class, 'listar']
+);
+
+$router->post(
+    '/api/rescatistas/{id}/aprobar',
+    [RescatistaControlador::class, 'aprobar']
+);
+
+$router->post(
+    '/api/rescatistas/{id}/rechazar',
+    [RescatistaControlador::class, 'rechazar']
 );
 
 $router->get(
