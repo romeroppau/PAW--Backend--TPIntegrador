@@ -289,4 +289,6 @@ Sin cuerpo.
 
 Cada validación queda en el log: qué rescatista, qué estado y qué veterinario.
 
+Además, la rescatista recibe un aviso en la campana (tabla `notificacion`, tipo `CUENTA`, canal `WEB`, `id_operacion` `cuenta-{id}-{APROBADO|RECHAZADO}`). Si no se puede guardar el aviso, la validación queda hecha igual y el error va al log.
+
 ---
