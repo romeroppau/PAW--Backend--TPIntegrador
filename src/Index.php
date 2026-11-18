@@ -23,6 +23,9 @@ require_once __DIR__ . '/../src/Jwt.php';
 require_once __DIR__ . '/../src/Sesion.php';
 require_once __DIR__ . '/../src/AuthControlador.php';
 require_once __DIR__ . '/../src/RescatistaControlador.php';
+require_once __DIR__ . '/../src/NotificacionRepositorio.php';
+require_once __DIR__ . '/../src/NotificacionControlador.php';
+date_default_timezone_set('America/Argentina/Buenos_Aires');
 
 // 3. Crear el router y registrar las rutas.
 $router = new Router();
@@ -92,3 +95,18 @@ try {
         500
     );
 }
+// Notificaciones.
+$router->post(
+    '/internal/notificaciones',
+    [NotificacionControlador::class, 'crearInterno']
+);
+
+$router->get(
+    '/api/notificaciones',
+    [NotificacionControlador::class, 'listar']
+);
+
+$router->post(
+    '/api/notificaciones/{id}/leida',
+    [NotificacionControlador::class, 'marcarLeida']
+);
