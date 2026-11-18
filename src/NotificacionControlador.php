@@ -2,7 +2,7 @@
 
 class NotificacionControlador
 {
-    private const TIPOS = ['VACUNA', 'CONTROL_ADOPCION', 'STOCK_BAJO', 'PROMOCION', 'CUENTA', 'POSTULACION'];
+    private const TIPOS = ['VACUNA', 'CONTROL_ADOPCION', 'STOCK_BAJO', 'PROMOCION', 'CUENTA', 'POSTULACION', 'COMPRA'];
     private const CANALES = ['WEB', 'WHATSAPP'];
     private const MAX_MENSAJE = 500;
     private const MAX_ID_OPERACION = 100;
