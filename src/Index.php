@@ -25,6 +25,7 @@ require_once __DIR__ . '/../src/AuthControlador.php';
 require_once __DIR__ . '/../src/RescatistaControlador.php';
 require_once __DIR__ . '/../src/NotificacionRepositorio.php';
 require_once __DIR__ . '/../src/NotificacionControlador.php';
+require_once __DIR__ . '/../src/WhatsAppCliente.php';
 date_default_timezone_set('America/Argentina/Buenos_Aires');
 
 // 3. Crear el router y registrar las rutas.
@@ -89,6 +90,11 @@ $router->get(
 $router->post(
     '/api/notificaciones/{id}/leida',
     [NotificacionControlador::class, 'marcarLeida']
+);
+
+$router->post(
+    '/api/notificaciones/tareas/enviar',
+    [NotificacionControlador::class, 'enviarPendientes']
 );
 
 // 4. Ejecutar el router y manejar errores inesperados.
