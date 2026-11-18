@@ -115,7 +115,7 @@ Son servicios de otras empresas a los que el backend se conecta. No los programa
 
 ### MercadoPago
 
-**Qué es:** el servicio que cobra las compras de la tienda. El cliente paga en la página de MercadoPago, y MercadoPago le avisa al módulo Inventario si el pago fue aprobado o rechazado.
+**Qué es:** el servicio que cobra las compras de la tienda. El comprador (un cliente o un rescatista) paga en la página de MercadoPago, y MercadoPago le avisa al módulo Inventario si el pago fue aprobado o rechazado.
 
 **Por qué lo elegimos:**
 - Es el medio de pago online más usado en Argentina, así que la mayoría de los clientes ya lo conoce y lo usa.
