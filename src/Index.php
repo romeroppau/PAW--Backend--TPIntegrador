@@ -75,6 +75,21 @@ $router->get(
     '/api/backend/salud',
     [AuthControlador::class, 'salud']
 );
+// Notificaciones.
+$router->post(
+    '/internal/notificaciones',
+    [NotificacionControlador::class, 'crearInterno']
+);
+
+$router->get(
+    '/api/notificaciones',
+    [NotificacionControlador::class, 'listar']
+);
+
+$router->post(
+    '/api/notificaciones/{id}/leida',
+    [NotificacionControlador::class, 'marcarLeida']
+);
 
 // 4. Ejecutar el router y manejar errores inesperados.
 try {
@@ -95,18 +110,3 @@ try {
         500
     );
 }
-// Notificaciones.
-$router->post(
-    '/internal/notificaciones',
-    [NotificacionControlador::class, 'crearInterno']
-);
-
-$router->get(
-    '/api/notificaciones',
-    [NotificacionControlador::class, 'listar']
-);
-
-$router->post(
-    '/api/notificaciones/{id}/leida',
-    [NotificacionControlador::class, 'marcarLeida']
-);
