@@ -70,7 +70,34 @@ class RescatistaControlador
         // Auditoría: quién validó a quién (SEGURIDAD.md).
         Logger::info("Rescatista {$id} {$estado} por el veterinario {$sesion['id']}");
 
+        self::avisarCuenta($id, $estado);
+
         Response::json(['rescatista' => self::datos($rescatista)], 200);
+    }
+
+    // Aviso a la rescatista en la campana (contrato-adopciones.md, sección 8). Lo deja Backend
+    // directamente, sin llamada interna. Si falla, la validación ya quedó hecha: solo se anota el error.
+    private static function avisarCuenta(int $id, string $estado): void
+    {
+        try {
+            (new NotificacionRepositorio(Database::conectar()))->insertar(
+                $id,
+                'CUENTA',
+                'WEB',
+                self::mensajeDeCuenta($estado),
+                date('Y-m-d H:i:s'),
+                "cuenta-{$id}-{$estado}"
+            );
+        } catch (Throwable $error) {
+            Logger::error("No se pudo dejar el aviso de cuenta al rescatista {$id}: " . $error->getMessage());
+        }
+    }
+
+    public static function mensajeDeCuenta(string $estado): string
+    {
+        return $estado === 'APROBADO'
+            ? '¡Tu cuenta de rescatista fue aprobada! Ya podés publicar a los animales que tenés a cargo en Mis publicaciones.'
+            : 'La veterinaria no aprobó tu cuenta de rescatista, así que no vas a poder publicar. Si creés que es un error, escribinos.';
     }
 
     // Lo que se muestra de un rescatista (nunca el hash de la contraseña).

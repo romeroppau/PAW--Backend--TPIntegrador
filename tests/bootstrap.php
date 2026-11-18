@@ -28,4 +28,5 @@ require_once __DIR__ . '/../src/Veterinario.php';
 require_once __DIR__ . '/../src/Rescatista.php';
 require_once __DIR__ . '/../src/UsuarioRepositorio.php';
 require_once __DIR__ . '/../src/Sesion.php';
+require_once __DIR__ . '/../src/RescatistaControlador.php';
 
