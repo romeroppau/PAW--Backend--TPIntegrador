@@ -104,4 +104,50 @@ class NotificacionControlador
         $dt = DateTime::createFromFormat('Y-m-d H:i:s', $f);
         return $dt !== false && $dt->format('Y-m-d H:i:s') === $f;
     }
+
+        // POST /api/notificaciones/tareas/enviar (lo llama GitHub Actions cada 15 minutos)
+    public static function enviarPendientes(): void
+    {
+        $esperado = Config::get('TAREAS_TOKEN');
+        $recibido = $_SERVER['HTTP_X_TAREA_TOKEN'] ?? '';
+
+        if (
+            $esperado === null || $esperado === '' || $recibido === '' ||
+            !hash_equals($esperado, $recibido)
+        ) {
+            Logger::info('Tarea de envío rechazada: token inválido');
+            Response::error('No autorizado', 401);
+            return;
+        }
+
+        $repo = new NotificacionRepositorio(Database::conectar());
+        $cliente = new WhatsAppCliente();
+        $enviadas = 0;
+        $fallidas = 0;
+
+        foreach ($repo->pendientesWhatsApp(20) as $aviso) {
+            $telefono = trim((string) ($aviso['telefono'] ?? ''));
+
+            // Sin teléfono: el aviso queda en la web; no se corta el envío de los demás.
+            if ($telefono === '') {
+                $fallidas++;
+                continue;
+            }
+
+            if ($cliente->enviar($telefono, (string) $aviso['nombre'], self::limpiar((string) $aviso['mensaje']))) {
+                $repo->marcarEnviada((int) $aviso['id']);
+                $enviadas++;
+            } else {
+                $fallidas++;   // queda pendiente: la próxima corrida lo reintenta
+            }
+        }
+
+        Response::json(['enviadas' => $enviadas, 'fallidas' => $fallidas], 200);
+    }
+
+    // Meta rechaza saltos de línea y más de 4 espacios seguidos en los parámetros de plantilla.
+    private static function limpiar(string $texto): string
+    {
+        return trim(preg_replace('/\s+/', ' ', $texto));
+    }
 }

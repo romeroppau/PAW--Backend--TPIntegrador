@@ -91,4 +91,31 @@ class NotificacionRepositorio
         $upd->execute([$id, $usuarioId]);
         return true;
     }
+        /** Avisos de WhatsApp sin enviar, con nombre y teléfono del usuario. Los más viejos primero. */
+    public function pendientesWhatsApp(int $limite = 20): array
+    {
+        $stmt = $this->db->prepare(
+            "SELECT n.id, n.mensaje, u.nombre, u.telefono
+             FROM notificacion n
+             JOIN usuario u ON u.id = n.usuario_id
+             WHERE n.canal = 'WHATSAPP'
+               AND n.enviada_en IS NULL
+               AND n.fecha_programada <= ?
+               AND n.fecha_programada >= ?
+             ORDER BY n.fecha_programada ASC, n.id ASC
+             LIMIT " . (int) $limite
+        );
+        // Solo los ya programados, y no más viejos de 3 días (para no reintentar eternamente).
+        $stmt->execute([date('Y-m-d H:i:s'), date('Y-m-d H:i:s', strtotime('-3 days'))]);
+        return $stmt->fetchAll(PDO::FETCH_ASSOC);
+    }
+
+    /** Marca el aviso como enviado (solo si todavía no lo estaba). */
+    public function marcarEnviada(int $id): void
+    {
+        $stmt = $this->db->prepare(
+            "UPDATE notificacion SET enviada_en = ? WHERE id = ? AND enviada_en IS NULL"
+        );
+        $stmt->execute([date('Y-m-d H:i:s'), $id]);
+    }
 }
