@@ -306,6 +306,15 @@ Los parámetros que la veterinaria cambia desde su panel (pantalla `panel/config
 | `dias_control_adopcion_2` | ENTERO | 90 | 14 a 365 días, después del primero | Reportes (motor) |
 | `limite_stock_bajo` | ENTERO | 10 | 0 a 1000 unidades | Reportes (motor y reporte de stock) |
 | `dias_liquidar` | ENTERO | 30 | 1 a 180 días | Reportes (qué liquidar) |
+| `minutos_para_pagar` | ENTERO | 15 | 5 a 60 minutos | Inventario (tienda) |
+| `dias_habiles_para_retirar` | ENTERO | 5 | 2 a 15 días hábiles | Inventario (tienda) |
+| `hora_avisos_tienda` | HORA | `09:00` | 07:00 a 20:00 | Inventario (tienda) |
+| `dia_primer_recordatorio` | ENTERO | 2 | 1 a 13 días hábiles, al menos 2 antes del último día para retirar | Inventario (tienda) |
+| `porcentaje_reintegro_anticipado` | ENTERO | 75 | 0 a 100 % | Inventario (tienda: reintegro si el comprador cancela con anticipación) |
+| `porcentaje_reintegro_ultimo_momento` | ENTERO | 50 | 0 a 100 %, no mayor que el anterior | Inventario (tienda: reintegro si cancela a último momento) |
+| `horas_anticipacion_reintegro` | ENTERO | 48 | 1 a 168 horas | Inventario (tienda: qué es "con anticipación") |
+
+Los de la tienda valen para las compras nuevas: cada compra guarda sus plazos y su política de reintegro al confirmarse (migraciones 015 y 017 del Gateway).
 
 Las dos rutas exigen sesión de veterinario (sin sesión, `401`; otro rol, `403`). El PUT exige además `X-CSRF-Token`.
 

@@ -115,4 +115,33 @@ final class CatalogoConfiguracionTest extends TestCase
         [, $errores] = CatalogoConfiguracion::validar(['dias_habiles_para_retirar' => 3], ['dia_primer_recordatorio' => '2']);
         $this->assertArrayHasKey('dias_habiles_para_retirar', $errores);
     }
+
+    public function testElReintegroPorCancelarTieneSusValoresPorDefecto(): void
+    {
+        $porClave = array_column(CatalogoConfiguracion::listar([]), 'valor', 'clave');
+
+        $this->assertSame(75, $porClave['porcentaje_reintegro_anticipado']);
+        $this->assertSame(50, $porClave['porcentaje_reintegro_ultimo_momento']);
+        $this->assertSame(48, $porClave['horas_anticipacion_reintegro']);
+    }
+
+    public function testElReintegroAUltimoMomentoNoPuedeSerMayorQueConAnticipacion(): void
+    {
+        [, $errores] = CatalogoConfiguracion::validar(['porcentaje_reintegro_ultimo_momento' => 80], []);
+        $this->assertArrayHasKey('porcentaje_reintegro_ultimo_momento', $errores);
+
+        // Iguales sí (y 0 % también: sin reintegro).
+        [, $sinErrores] = CatalogoConfiguracion::validar(['porcentaje_reintegro_ultimo_momento' => 75], []);
+        $this->assertSame([], $sinErrores);
+        [, $sinErrores] = CatalogoConfiguracion::validar(['porcentaje_reintegro_anticipado' => 0, 'porcentaje_reintegro_ultimo_momento' => 0], []);
+        $this->assertSame([], $sinErrores);
+
+        // Bajar el de anticipación por debajo del guardado a último momento: el error va en el que se cambió.
+        [, $errores] = CatalogoConfiguracion::validar(['porcentaje_reintegro_anticipado' => 40], ['porcentaje_reintegro_ultimo_momento' => '50']);
+        $this->assertArrayHasKey('porcentaje_reintegro_anticipado', $errores);
+
+        [, $errores] = CatalogoConfiguracion::validar(['porcentaje_reintegro_anticipado' => 101, 'horas_anticipacion_reintegro' => 0], []);
+        $this->assertArrayHasKey('porcentaje_reintegro_anticipado', $errores);
+        $this->assertArrayHasKey('horas_anticipacion_reintegro', $errores);
+    }
 }
