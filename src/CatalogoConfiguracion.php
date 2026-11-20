@@ -84,8 +84,8 @@ class CatalogoConfiguracion
         ],
         'dia_primer_recordatorio' => [
             'grupo' => 'TIENDA', 'nombre' => 'Primer recordatorio para retirar',
-            'ayuda' => 'En qué día hábil después de la compra se le recuerda al cliente que retire su pedido. El último recordatorio sale siempre el día hábil anterior al último día.',
-            'tipo' => 'ENTERO', 'defecto' => 2, 'minimo' => 1, 'maximo' => 13, 'unidad' => 'día hábil',
+            'ayuda' => 'A los cuántos días hábiles de la compra se le recuerda al cliente que retire su pedido. El último recordatorio sale siempre el día hábil anterior al último día.',
+            'tipo' => 'ENTERO', 'defecto' => 2, 'minimo' => 1, 'maximo' => 13, 'unidad' => 'días hábiles',
             'usa' => 'Inventario',
         ],
     ];
