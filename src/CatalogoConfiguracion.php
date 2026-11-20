@@ -88,6 +88,26 @@ class CatalogoConfiguracion
             'tipo' => 'ENTERO', 'defecto' => 2, 'minimo' => 1, 'maximo' => 13, 'unidad' => 'días hábiles',
             'usa' => 'Inventario',
         ],
+        // Reintegro cuando el comprador cancela un pedido ya pagado: más si avisa con anticipación.
+        // Cada compra guarda esta política al confirmarse (migración 017), como los plazos.
+        'porcentaje_reintegro_anticipado' => [
+            'grupo' => 'TIENDA', 'nombre' => 'Reintegro si cancela con anticipación',
+            'ayuda' => 'Qué porcentaje del importe se le devuelve al cliente que cancela un pedido pagado con la anticipación de abajo (o más) antes del final del último día para retirar.',
+            'tipo' => 'ENTERO', 'defecto' => 75, 'minimo' => 0, 'maximo' => 100, 'unidad' => '%',
+            'usa' => 'Inventario',
+        ],
+        'porcentaje_reintegro_ultimo_momento' => [
+            'grupo' => 'TIENDA', 'nombre' => 'Reintegro si cancela a último momento',
+            'ayuda' => 'Qué porcentaje se le devuelve si cancela con menos anticipación. Si no retira el pedido a tiempo, no se le devuelve nada.',
+            'tipo' => 'ENTERO', 'defecto' => 50, 'minimo' => 0, 'maximo' => 100, 'unidad' => '%',
+            'usa' => 'Inventario',
+        ],
+        'horas_anticipacion_reintegro' => [
+            'grupo' => 'TIENDA', 'nombre' => 'Anticipación para el reintegro mayor',
+            'ayuda' => 'Con cuántas horas de anticipación (antes del final del último día para retirar) tiene que cancelar el cliente para recibir el reintegro mayor.',
+            'tipo' => 'ENTERO', 'defecto' => 48, 'minimo' => 1, 'maximo' => 168, 'unidad' => 'horas',
+            'usa' => 'Inventario',
+        ],
     ];
 
     // Los parámetros con su valor actual, en el orden del catálogo, para GET /api/configuracion.
@@ -174,6 +194,12 @@ class CatalogoConfiguracion
             $campo = isset($limpios['dia_primer_recordatorio']) || !isset($limpios['dias_habiles_para_retirar'])
                 ? 'dia_primer_recordatorio' : 'dias_habiles_para_retirar';
             $errores[$campo] = 'El primer recordatorio tiene que ser al menos 2 días hábiles antes del último día para retirar';
+        }
+        // Cancelar a último momento nunca devuelve más que cancelar con anticipación.
+        if ((int) $final['porcentaje_reintegro_ultimo_momento'] > (int) $final['porcentaje_reintegro_anticipado']) {
+            $campo = isset($limpios['porcentaje_reintegro_ultimo_momento']) || !isset($limpios['porcentaje_reintegro_anticipado'])
+                ? 'porcentaje_reintegro_ultimo_momento' : 'porcentaje_reintegro_anticipado';
+            $errores[$campo] = 'El reintegro a último momento no puede ser mayor que el reintegro con anticipación';
         }
         if ((int) $final['dias_control_adopcion_1'] >= (int) $final['dias_control_adopcion_2']) {
             $campo = isset($limpios['dias_control_adopcion_2']) || !isset($limpios['dias_control_adopcion_1'])
