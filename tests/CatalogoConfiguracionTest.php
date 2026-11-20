@@ -93,4 +93,26 @@ final class CatalogoConfiguracionTest extends TestCase
         $this->assertSame([], $errores);
         $this->assertSame('120', $limpios['dias_control_adopcion_2']);
     }
+
+    public function testLaTiendaTieneSusPlazosConfigurables(): void
+    {
+        [$limpios, $errores] = CatalogoConfiguracion::validar(['minutos_para_pagar' => 20, 'dias_habiles_para_retirar' => '7', 'hora_avisos_tienda' => '10:30'], []);
+
+        $this->assertSame([], $errores);
+        $this->assertSame(['minutos_para_pagar' => '20', 'dias_habiles_para_retirar' => '7', 'hora_avisos_tienda' => '10:30'], $limpios);
+    }
+
+    public function testElPrimerRecordatorioTieneQueSerAntesDelUltimo(): void
+    {
+        // Con 5 días para retirar, el último recordatorio es el día 4: el primero puede ser hasta el 3.
+        [, $errores] = CatalogoConfiguracion::validar(['dia_primer_recordatorio' => 4], []);
+        $this->assertArrayHasKey('dia_primer_recordatorio', $errores);
+
+        [, $sinErrores] = CatalogoConfiguracion::validar(['dia_primer_recordatorio' => 3], []);
+        $this->assertSame([], $sinErrores);
+
+        // Achicar el plazo por debajo del primer recordatorio guardado: el error va en el plazo.
+        [, $errores] = CatalogoConfiguracion::validar(['dias_habiles_para_retirar' => 3], ['dia_primer_recordatorio' => '2']);
+        $this->assertArrayHasKey('dias_habiles_para_retirar', $errores);
+    }
 }

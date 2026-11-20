@@ -15,6 +15,7 @@ class CatalogoConfiguracion
         'TURNOS' => 'Turnos',
         'AVISOS' => 'Avisos a los clientes',
         'STOCK' => 'Stock y vencimientos',
+        'TIENDA' => 'Tienda',
     ];
 
     // tipo HORA: "HH:MM" (minimo y maximo también son horas). tipo ENTERO: número entero, con su unidad.
@@ -60,6 +61,32 @@ class CatalogoConfiguracion
             'ayuda' => 'Cuántos días antes del vencimiento se sugiere liquidar un producto con descuento.',
             'tipo' => 'ENTERO', 'defecto' => 30, 'minimo' => 1, 'maximo' => 180, 'unidad' => 'días',
             'usa' => 'Reportes',
+        ],
+        // Tienda (Inventario). Un cambio vale para las compras nuevas: cada compra guarda sus plazos
+        // al confirmarse (migración 015), así a las que ya existen no se les cambia lo prometido.
+        'minutos_para_pagar' => [
+            'grupo' => 'TIENDA', 'nombre' => 'Tiempo para pagar',
+            'ayuda' => 'Cuántos minutos tiene el cliente para pagar con Mercado Pago después de tocar "Ir a pagar". Si no paga, la compra se cancela sola y los productos vuelven a la tienda.',
+            'tipo' => 'ENTERO', 'defecto' => 15, 'minimo' => 5, 'maximo' => 60, 'unidad' => 'minutos',
+            'usa' => 'Inventario',
+        ],
+        'dias_habiles_para_retirar' => [
+            'grupo' => 'TIENDA', 'nombre' => 'Plazo para retirar',
+            'ayuda' => 'Cuántos días hábiles (lunes a viernes) tiene el cliente para retirar un pedido pagado. Si no lo retira, se cancela sin reintegro.',
+            'tipo' => 'ENTERO', 'defecto' => 5, 'minimo' => 2, 'maximo' => 15, 'unidad' => 'días hábiles',
+            'usa' => 'Inventario',
+        ],
+        'hora_avisos_tienda' => [
+            'grupo' => 'TIENDA', 'nombre' => 'Hora de los avisos de la tienda',
+            'ayuda' => 'Desde qué hora salen los recordatorios para retirar y se cancelan los pedidos que no se retiraron a tiempo.',
+            'tipo' => 'HORA', 'defecto' => '09:00', 'minimo' => '07:00', 'maximo' => '20:00', 'unidad' => null,
+            'usa' => 'Inventario',
+        ],
+        'dia_primer_recordatorio' => [
+            'grupo' => 'TIENDA', 'nombre' => 'Primer recordatorio para retirar',
+            'ayuda' => 'A los cuántos días hábiles de la compra se le recuerda al cliente que retire su pedido. El último recordatorio sale siempre el día hábil anterior al último día.',
+            'tipo' => 'ENTERO', 'defecto' => 2, 'minimo' => 1, 'maximo' => 13, 'unidad' => 'días hábiles',
+            'usa' => 'Inventario',
         ],
     ];
 
@@ -140,6 +167,13 @@ class CatalogoConfiguracion
         if ($final['hora_apertura'] >= $final['hora_cierre']) {
             $campo = isset($limpios['hora_cierre']) || !isset($limpios['hora_apertura']) ? 'hora_cierre' : 'hora_apertura';
             $errores[$campo] = 'El cierre tiene que ser después de la apertura';
+        }
+        // El primer recordatorio tiene que salir antes que el último (que es el día hábil anterior al
+        // último día para retirar): al menos 2 días antes del final del plazo.
+        if ((int) $final['dia_primer_recordatorio'] > (int) $final['dias_habiles_para_retirar'] - 2) {
+            $campo = isset($limpios['dia_primer_recordatorio']) || !isset($limpios['dias_habiles_para_retirar'])
+                ? 'dia_primer_recordatorio' : 'dias_habiles_para_retirar';
+            $errores[$campo] = 'El primer recordatorio tiene que ser al menos 2 días hábiles antes del último día para retirar';
         }
         if ((int) $final['dias_control_adopcion_1'] >= (int) $final['dias_control_adopcion_2']) {
             $campo = isset($limpios['dias_control_adopcion_2']) || !isset($limpios['dias_control_adopcion_1'])
