@@ -105,7 +105,7 @@ class NotificacionControlador
         return $dt !== false && $dt->format('Y-m-d H:i:s') === $f;
     }
 
-        // POST /api/notificaciones/tareas/enviar (lo llama GitHub Actions cada 15 minutos)
+    // POST /api/notificaciones/tareas/enviar (lo llama GitHub Actions cada 15 minutos)
     public static function enviarPendientes(): void
     {
         $esperado = Config::get('TAREAS_TOKEN');
@@ -123,26 +123,58 @@ class NotificacionControlador
         $repo = new NotificacionRepositorio(Database::conectar());
         $cliente = new WhatsAppCliente();
         $enviadas = 0;
-        $fallidas = 0;
+        $reintentar = 0;    // fallaron por algo pasajero: la próxima corrida los vuelve a probar
+        $descartadas = 0;   // no van a salir nunca por WhatsApp (quedan en la web)
+        $configuracion = null;
 
         foreach ($repo->pendientesWhatsApp(20) as $aviso) {
-            $telefono = trim((string) ($aviso['telefono'] ?? ''));
+            $id = (int) $aviso['id'];
 
-            // Sin teléfono: el aviso queda en la web; no se corta el envío de los demás.
-            if ($telefono === '') {
-                $fallidas++;
+            // Otra corrida lo tomó primero: no se manda dos veces.
+            if (!$repo->tomarParaEnviar($id, (int) $aviso['intentos'])) {
                 continue;
             }
 
-            if ($cliente->enviar($telefono, (string) $aviso['nombre'], self::limpiar((string) $aviso['mensaje']))) {
-                $repo->marcarEnviada((int) $aviso['id']);
+            $telefono = trim((string) ($aviso['telefono'] ?? ''));
+            if ($telefono === '') {
+                $repo->registrarFallo($id, 'SIN_TELEFONO', true);
+                $descartadas++;
+                continue;
+            }
+
+            $r = $cliente->enviar($telefono, self::limpiar((string) $aviso['nombre']), self::limpiar((string) $aviso['mensaje']));
+
+            if ($r->ok) {
+                $repo->marcarEnviada($id);
                 $enviadas++;
+            } elseif ($r->deConfiguracion) {
+                // Token vencido, falta una variable, plantilla mal: fallarían todos. Se corta acá
+                // y se devuelve el intento; salen solos cuando se arregla la configuración.
+                $repo->devolverIntento($id, $r->motivo);
+                $configuracion = $r->motivo;
+                break;
+            } elseif ($r->permanente) {
+                $repo->registrarFallo($id, $r->motivo, true);
+                $descartadas++;
             } else {
-                $fallidas++;   // queda pendiente: la próxima corrida lo reintenta
+                $repo->registrarFallo($id, $r->motivo, false);
+                $reintentar++;
             }
         }
 
-        Response::json(['enviadas' => $enviadas, 'fallidas' => $fallidas], 200);
+        $respuesta = [
+            'enviadas' => $enviadas,
+            'fallidas' => $reintentar + $descartadas,   // se mantiene por compatibilidad
+            'reintentar' => $reintentar,
+            'descartadas' => $descartadas,
+            'simulado' => WhatsAppCliente::simulado(),
+        ];
+        if ($configuracion !== null) {
+            $respuesta['error_configuracion'] = $configuracion;
+        }
+
+        // 200 igual: la tarea corrió. El workflow muestra el resumen en su log.
+        Response::json($respuesta, 200);
     }
 
     // Meta rechaza saltos de línea y más de 4 espacios seguidos en los parámetros de plantilla.
