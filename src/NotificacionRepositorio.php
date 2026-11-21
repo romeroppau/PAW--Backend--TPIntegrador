@@ -43,13 +43,16 @@ class NotificacionRepositorio
         return (bool) $stmt->fetchColumn();
     }
 
-    /** Las del usuario, no leídas primero. */
+    /**
+     * Los avisos de la campana: solo canal WEB, no leídos primero.
+     * Los de WhatsApp quedan solo para el envío (un aviso por los dos canales son dos filas).
+     */
     public function listarDeUsuario(int $usuarioId): array
     {
         $stmt = $this->db->prepare(
             "SELECT id, tipo, canal, mensaje, fecha_programada, leida
              FROM notificacion
-             WHERE usuario_id = ?
+             WHERE usuario_id = ? AND canal = 'WEB'
              ORDER BY leida ASC, fecha_programada DESC, id DESC
              LIMIT 100"
         );
@@ -65,20 +68,22 @@ class NotificacionRepositorio
         ], $stmt->fetchAll(PDO::FETCH_ASSOC));
     }
 
+    /** Cuántos avisos web sin leer tiene el usuario (el número de la campana). */
     public function contarNoLeidas(int $usuarioId): int
     {
         $stmt = $this->db->prepare(
-            "SELECT COUNT(*) FROM notificacion WHERE usuario_id = ? AND leida = 0"
+            "SELECT COUNT(*) FROM notificacion
+             WHERE usuario_id = ? AND canal = 'WEB' AND leida = 0"
         );
         $stmt->execute([$usuarioId]);
         return (int) $stmt->fetchColumn();
     }
 
-    /** true si existía y era del usuario (marcarla dos veces también da true). */
+    /** true si existía, era del usuario y es de canal WEB (marcarla dos veces también da true). */
     public function marcarLeida(int $id, int $usuarioId): bool
     {
         $stmt = $this->db->prepare(
-            "SELECT 1 FROM notificacion WHERE id = ? AND usuario_id = ?"
+            "SELECT 1 FROM notificacion WHERE id = ? AND usuario_id = ? AND canal = 'WEB'"
         );
         $stmt->execute([$id, $usuarioId]);
         if (!$stmt->fetchColumn()) {
@@ -86,12 +91,13 @@ class NotificacionRepositorio
         }
 
         $upd = $this->db->prepare(
-            "UPDATE notificacion SET leida = 1 WHERE id = ? AND usuario_id = ?"
+            "UPDATE notificacion SET leida = 1 WHERE id = ? AND usuario_id = ? AND canal = 'WEB'"
         );
         $upd->execute([$id, $usuarioId]);
         return true;
     }
-        /** Avisos de WhatsApp sin enviar, con nombre y teléfono del usuario. Los más viejos primero. */
+
+    /** Avisos de WhatsApp sin enviar, con nombre y teléfono del usuario. Los más viejos primero. */
     public function pendientesWhatsApp(int $limite = 20): array
     {
         $stmt = $this->db->prepare(

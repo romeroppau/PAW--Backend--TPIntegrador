@@ -26,6 +26,9 @@ require_once __DIR__ . '/../src/RescatistaControlador.php';
 require_once __DIR__ . '/../src/NotificacionRepositorio.php';
 require_once __DIR__ . '/../src/NotificacionControlador.php';
 require_once __DIR__ . '/../src/WhatsAppCliente.php';
+require_once __DIR__ . '/../src/CatalogoConfiguracion.php';
+require_once __DIR__ . '/../src/ConfiguracionRepositorio.php';
+require_once __DIR__ . '/../src/ConfiguracionControlador.php';
 date_default_timezone_set('America/Argentina/Buenos_Aires');
 
 // 3. Crear el router y registrar las rutas.
@@ -95,6 +98,17 @@ $router->post(
 $router->post(
     '/api/notificaciones/tareas/enviar',
     [NotificacionControlador::class, 'enviarPendientes']
+);
+
+// Configuración de la veterinaria (parámetros que cambia desde su panel).
+$router->get(
+    '/api/configuracion',
+    [ConfiguracionControlador::class, 'ver']
+);
+
+$router->put(
+    '/api/configuracion',
+    [ConfiguracionControlador::class, 'guardar']
 );
 
 // 4. Ejecutar el router y manejar errores inesperados.

@@ -292,3 +292,59 @@ Cada validación queda en el log: qué rescatista, qué estado y qué veterinari
 Además, la rescatista recibe un aviso en la campana (tabla `notificacion`, tipo `CUENTA`, canal `WEB`, `id_operacion` `cuenta-{id}-{APROBADO|RECHAZADO}`). Si no se puede guardar el aviso, la validación queda hecha igual y el error va al log.
 
 ---
+
+## Configuración (Entrega 5)
+
+Los parámetros que la veterinaria cambia desde su panel (pantalla `panel/configuracion.html`). Qué parámetros hay, su tipo, su rango y su valor por defecto están en `src/CatalogoConfiguracion.php`. La tabla `configuracion` (migración 014 del Gateway) guarda solo los que se cambiaron. Los demás módulos los leen con `comun/configuracion.php`, y si un parámetro no está guardado usan su valor por defecto.
+
+| Clave | Tipo | Por defecto | Rango | Lo usa |
+|---|---|---|---|---|
+| `hora_apertura` | HORA | `08:00` | 06:00 a 22:00 | Pacientes (turnos) |
+| `hora_cierre` | HORA | `20:00` | 07:00 a 23:59, después de la apertura | Pacientes (turnos) |
+| `dias_aviso_vacuna` | ENTERO | 7 | 1 a 30 días | Reportes (motor) |
+| `dias_control_adopcion_1` | ENTERO | 30 | 7 a 180 días | Reportes (motor) |
+| `dias_control_adopcion_2` | ENTERO | 90 | 14 a 365 días, después del primero | Reportes (motor) |
+| `limite_stock_bajo` | ENTERO | 10 | 0 a 1000 unidades | Reportes (motor y reporte de stock) |
+| `dias_liquidar` | ENTERO | 30 | 1 a 180 días | Reportes (qué liquidar) |
+| `minutos_para_pagar` | ENTERO | 15 | 5 a 60 minutos | Inventario (tienda) |
+| `dias_habiles_para_retirar` | ENTERO | 5 | 2 a 15 días hábiles | Inventario (tienda) |
+| `hora_avisos_tienda` | HORA | `09:00` | 07:00 a 20:00 | Inventario (tienda) |
+| `dia_primer_recordatorio` | ENTERO | 2 | 1 a 13 días hábiles, al menos 2 antes del último día para retirar | Inventario (tienda) |
+| `porcentaje_reintegro_anticipado` | ENTERO | 75 | 0 a 100 % | Inventario (tienda: reintegro si el comprador cancela con anticipación) |
+| `porcentaje_reintegro_ultimo_momento` | ENTERO | 50 | 0 a 100 %, no mayor que el anterior | Inventario (tienda: reintegro si cancela a último momento) |
+| `horas_anticipacion_reintegro` | ENTERO | 48 | 1 a 168 horas | Inventario (tienda: qué es "con anticipación") |
+
+Los de la tienda valen para las compras nuevas: cada compra guarda sus plazos y su política de reintegro al confirmarse (migraciones 015 y 017 del Gateway).
+
+Las dos rutas exigen sesión de veterinario (sin sesión, `401`; otro rol, `403`). El PUT exige además `X-CSRF-Token`.
+
+### GET /api/configuracion
+
+- `200`: `{ "parametros": [ ... ] }`, en el orden de la tabla de arriba. Cada uno:
+
+```json
+{
+  "clave": "hora_apertura", "grupo": "TURNOS", "nombre_grupo": "Turnos",
+  "nombre": "Apertura", "ayuda": "Desde qué hora se pueden dar turnos.",
+  "tipo": "HORA", "unidad": null, "minimo": "06:00", "maximo": "22:00",
+  "defecto": "08:00", "valor": "09:00", "modificado": true,
+  "actualizado_en": "2026-11-20 10:15:00", "actualizado_por": "Veterinaria de Prueba"
+}
+```
+
+En los `ENTERO`, `minimo`, `maximo`, `defecto` y `valor` son números. Si `modificado` es `false`, `valor` es el de por defecto y `actualizado_en` y `actualizado_por` son `null`.
+
+### PUT /api/configuracion
+
+```json
+{ "valores": { "hora_apertura": "09:00", "dias_aviso_vacuna": 5 } }
+```
+
+Solo los que cambian. Se guardan todos o ninguno. Mandar el valor por defecto vuelve el parámetro a como estaba (se borra la fila).
+
+- `200`: la misma respuesta que el GET, ya con los valores nuevos.
+- `400`: `{ "error": "Revisá los valores marcados", "campos": { "hora_cierre": "El cierre tiene que ser después de la apertura" } }`. Una clave que no existe, un valor de otro tipo o fuera de rango, la apertura después del cierre o el segundo control antes del primero (el error va en el campo que se cambió). Sin `valores`: el error va en `campos.valores`.
+
+Cada cambio queda en el log: qué veterinaria y qué claves.
+
+---
