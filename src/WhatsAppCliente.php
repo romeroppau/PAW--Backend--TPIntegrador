@@ -15,9 +15,12 @@ class WhatsAppCliente
     public static function normalizarTelefono(string $tel): ?string
     {
         $d = preg_replace('/\D+/', '', $tel);
-        if (preg_match('/^549\d{10}$/', $d)) return $d;
-        if (preg_match('/^54\d{10}$/', $d))  return '549' . substr($d, 2);
-        if (preg_match('/^\d{10}$/', $d))    return '549' . $d;
+        if (preg_match('/^549\d{10}$/', $d))
+            return $d;
+        if (preg_match('/^54\d{10}$/', $d))
+            return '549' . substr($d, 2);
+        if (preg_match('/^\d{10}$/', $d))
+            return '549' . $d;
         return null;
     }
 
@@ -37,7 +40,7 @@ class WhatsAppCliente
         $token = getenv('WHATSAPP_TOKEN') ?: '';
         $numeroId = getenv('WHATSAPP_NUMERO_ID') ?: '';
         if ($token === '' || $numeroId === '') {
-            Logger::error('WhatsApp: faltan WHATSAPP_TOKEN o WHATSAPP_NUMERO_ID');
+            Logger::error('WhatsApp: falta ' . ($token === '' ? 'WHATSAPP_TOKEN ' : '') . ($numeroId === '' ? 'WHATSAPP_NUMERO_ID' : ''));
             return false;
         }
 
@@ -48,13 +51,15 @@ class WhatsAppCliente
             'template' => [
                 'name' => getenv('WHATSAPP_PLANTILLA') ?: 'aviso_huellavet',
                 'language' => ['code' => getenv('WHATSAPP_IDIOMA') ?: 'es_AR'],
-                'components' => [[
-                    'type' => 'body',
-                    'parameters' => [
-                        ['type' => 'text', 'text' => $nombre],
-                        ['type' => 'text', 'text' => $mensaje],
-                    ],
-                ]],
+                'components' => [
+                    [
+                        'type' => 'body',
+                        'parameters' => [
+                            ['type' => 'text', 'text' => $nombre],
+                            ['type' => 'text', 'text' => $mensaje],
+                        ],
+                    ]
+                ],
             ],
         ], JSON_UNESCAPED_UNICODE);
 
