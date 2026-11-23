@@ -18,6 +18,11 @@ Las reglas generales que valen para todos los modulos (formato JSON,formato de e
 | `GET /api/rescatistas` | Veterinario | Rescatistas por estado de validación (Entrega 5) |
 | `POST /api/rescatistas/{id}/aprobar` | Veterinario | Aprobar a un rescatista pendiente: desde ahí puede publicar en adopciones |
 | `POST /api/rescatistas/{id}/rechazar` | Veterinario | Rechazar a un rescatista pendiente |
+| `GET /api/cuenta` | Con sesión | Mis datos: los datos de la propia cuenta (Entrega 5) |
+| `PUT /api/cuenta` | Con sesión | Cambiar el nombre y el teléfono (y la organización, el rescatista) |
+| `PUT /api/cuenta/contrasena` | Con sesión | Cambiar la contraseña, con la actual |
+| `GET /api/clientes` | Veterinario | Lista de clientes, con buscador, de a 20 (Entrega 5) |
+| `GET /api/clientes/{id}` | Veterinario | Ficha de un cliente (o de un rescatista, dueño de mascotas) |
 
 El veterinario no tiene endpoint de registro: se crea con el script `scripts/crear_veterinario.php`.
 
@@ -292,6 +297,69 @@ Cada validación queda en el log: qué rescatista, qué estado y qué veterinari
 Además, la rescatista recibe un aviso en la campana (tabla `notificacion`, tipo `CUENTA`, canal `WEB`, `id_operacion` `cuenta-{id}-{APROBADO|RECHAZADO}`). Si no se puede guardar el aviso, la validación queda hecha igual y el error va al log.
 
 ---
+
+## Mis datos (Entrega 5)
+
+Cada usuario (cliente, rescatista o veterinaria) ve y cambia **los datos de su propia cuenta**: el usuario sale del JWT, nunca de la ruta, así que nadie puede cambiar los de otro. El **email no se cambia** (es el usuario para entrar). Los `PUT` exigen `X-CSRF-Token`. Sin sesión, `401`.
+
+### Forma de una cuenta
+
+```json
+{ "id": 102, "nombre": "Ana Pérez", "email": "ana@ejemplo.com", "telefono": "2323555555", "rol": "CLIENTE", "organizacion": null }
+```
+
+- `telefono`: los 10 dígitos guardados (sin +54 ni 9), o `null` si no tiene (la veterinaria puede no tenerlo).
+- `organizacion`: solo la del rescatista; para los demás, `null`.
+
+### GET /api/cuenta
+
+`200` con la cuenta.
+
+### PUT /api/cuenta
+
+```json
+{ "nombre": "Ana Pérez", "telefono": "2323 555555", "organizacion": "Patitas Luján" }
+```
+
+- `nombre` y `telefono`: las mismas reglas y mensajes que en el registro (tabla de arriba). El teléfono es **obligatorio para cliente y rescatista** y **opcional para la veterinaria** (vacío = sin teléfono).
+- `organizacion`: solo la usa el rescatista (opcional, hasta 100 caracteres; vacía = sin organización). Para los demás se ignora.
+- `email`: si viene, se ignora.
+
+`200` con la cuenta actualizada. `400 { "error": "Datos inválidos", "campos": { ... } }` con un mensaje por campo. El nombre nuevo se ve enseguida en el encabezado (`/api/auth/yo` lo lee de la base).
+
+### PUT /api/cuenta/contrasena
+
+```json
+{ "actual": "mi-contraseña-de-hoy", "nueva": "mi-contraseña-nueva", "repetir": "mi-contraseña-nueva" }
+```
+
+- `actual`: obligatoria ("Escribí tu contraseña actual") y tiene que ser la guardada ("La contraseña actual no es correcta"). Así, con una sesión abierta en otra compu, nadie la cambia sin saberla.
+- `nueva`: las mismas reglas que `password` en el registro, y distinta de la actual ("La contraseña nueva tiene que ser distinta de la actual").
+- `repetir`: igual a la nueva ("Las contraseñas nuevas no coinciden").
+
+`200 { "mensaje": "Tu contraseña se cambió" }`. La sesión sigue abierta; la nueva se usa al próximo inicio de sesión. Si algo está mal, `400` con el campo (también si la actual no es correcta: no es un `401`, la sesión no se cierra).
+
+## Clientes (Entrega 5)
+
+Para la veterinaria: la pantalla **Clientes** (Panel → Mis pacientes) y la **ficha de un cliente**, a la que se llega también desde el nombre del dueño en Mascotas y en la Agenda. **Solo lectura**: cada uno cambia sus datos desde "Mis datos". Sin sesión, `401`; otro rol, `403`.
+
+### GET /api/clientes?buscar=ana&pagina=1
+
+Los usuarios con rol `CLIENTE`, por nombre, **de a 20**.
+
+- `buscar` (opcional, hasta 100 caracteres): por nombre, email o teléfono (cualquier parte, sin importar mayúsculas). `%` y `_` se buscan como letras.
+- `pagina` (desde 1, por defecto 1): `400` si no es un entero desde 1.
+
+`200`:
+
+```json
+{ "datos": [ { "id": 102, "nombre": "Ana Pérez", "email": "ana@ejemplo.com", "telefono": "2323555555", "rol": "CLIENTE", "organizacion": null } ],
+  "pagina": 1, "por_pagina": 20, "hay_mas": false }
+```
+
+### GET /api/clientes/{id}
+
+La ficha (forma de una cuenta) de un **cliente o un rescatista** (los rescatistas también tienen mascotas a cargo). `404 { "error": "Cliente no encontrado" }` si no existe o es una veterinaria. Las mascotas del cliente no vienen acá (son de Pacientes): la pantalla las pide a `GET /api/pacientes/mascotas`.
 
 ## Configuración (Entrega 5)
 

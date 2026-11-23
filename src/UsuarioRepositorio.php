@@ -183,6 +183,75 @@ class UsuarioRepositorio
         $consulta->execute([$id]);
     }
 
+    // ---------- Mis datos y clientes ----------
+
+    // Los datos de una cuenta para mostrar (nunca el hash de la contraseña), o null si no existe.
+    // Los usan "Mis datos" (la propia cuenta) y la ficha del cliente que ve la veterinaria.
+    public function cuenta(int $id): ?array
+    {
+        $consulta = $this->db->prepare(
+            'SELECT id, nombre, email, telefono, rol, organizacion FROM usuario WHERE id = ?'
+        );
+        $consulta->execute([$id]);
+        $fila = $consulta->fetch();
+
+        return $fila === false ? null : self::datosDeCuenta($fila);
+    }
+
+    // Guarda lo que cada uno puede cambiar de su cuenta. La organización solo se toca si
+    // $conOrganizacion (rescatista); el email y el rol no se cambian nunca desde acá.
+    public function actualizarDatos(int $id, string $nombre, ?string $telefono, ?string $organizacion, bool $conOrganizacion): void
+    {
+        if ($conOrganizacion) {
+            $this->db->prepare('UPDATE usuario SET nombre = ?, telefono = ?, organizacion = ? WHERE id = ?')
+                ->execute([$nombre, $telefono, $organizacion, $id]);
+        } else {
+            $this->db->prepare('UPDATE usuario SET nombre = ?, telefono = ? WHERE id = ?')
+                ->execute([$nombre, $telefono, $id]);
+        }
+    }
+
+    // Guarda la contraseña nueva (ya hasheada: nunca la contraseña en limpio).
+    public function actualizarPassword(int $id, string $passwordHash): void
+    {
+        $this->db->prepare('UPDATE usuario SET password_hash = ? WHERE id = ?')->execute([$passwordHash, $id]);
+    }
+
+    // Los clientes (rol CLIENTE) para la veterinaria, por nombre, de a $porPagina. Con $buscar, los que
+    // coinciden por nombre, email o teléfono (cualquier parte). Devuelve [clientes, hayMas].
+    public function listarClientes(string $buscar, int $pagina, int $porPagina): array
+    {
+        $sql = "SELECT id, nombre, email, telefono, rol, organizacion FROM usuario WHERE rol = 'CLIENTE'";
+        $valores = [];
+
+        if ($buscar !== '') {
+            // Se escapan % y _ para que se busquen como letras, no como comodines.
+            $patron = '%' . addcslashes($buscar, '%_\\') . '%';
+            $sql .= ' AND (nombre LIKE ? OR email LIKE ? OR telefono LIKE ?)';
+            array_push($valores, $patron, $patron, $patron);
+        }
+
+        $sql .= ' ORDER BY nombre, id LIMIT ' . ($porPagina + 1) . ' OFFSET ' . (($pagina - 1) * $porPagina);
+        $consulta = $this->db->prepare($sql);
+        $consulta->execute($valores);
+        $filas = array_map([self::class, 'datosDeCuenta'], $consulta->fetchAll());
+
+        return [array_slice($filas, 0, $porPagina), count($filas) > $porPagina];
+    }
+
+    // Una fila como la ven "Mis datos" y la veterinaria. La organización, solo la del rescatista.
+    private static function datosDeCuenta(array $fila): array
+    {
+        return [
+            'id' => (int) $fila['id'],
+            'nombre' => $fila['nombre'],
+            'email' => $fila['email'],
+            'telefono' => $fila['telefono'] === null || $fila['telefono'] === '' ? null : $fila['telefono'],
+            'rol' => $fila['rol'],
+            'organizacion' => $fila['rol'] === 'RESCATISTA' ? $fila['organizacion'] : null,
+        ];
+    }
+
     // Convierte una fila de la tabla en el objeto que corresponde según la columna rol.
     // Si la consulta no encontró nada, fetch() devuelve false y acá se devuelve null.
     // "match" es como un switch: según el valor de rol, crea una clase u otra.
