@@ -25,6 +25,9 @@ require_once __DIR__ . '/../src/AuthControlador.php';
 require_once __DIR__ . '/../src/RescatistaControlador.php';
 require_once __DIR__ . '/../src/CuentaControlador.php';
 require_once __DIR__ . '/../src/ClientesControlador.php';
+require_once __DIR__ . '/../src/ValidadorResena.php';
+require_once __DIR__ . '/../src/ResenaRepositorio.php';
+require_once __DIR__ . '/../src/ResenaControlador.php';
 require_once __DIR__ . '/../src/NotificacionRepositorio.php';
 require_once __DIR__ . '/../src/NotificacionControlador.php';
 require_once __DIR__ . '/../src/WhatsAppCliente.php';
@@ -86,6 +89,27 @@ $router->get(
 $router->get(
     '/api/clientes/{id}',
     [ClientesControlador::class, 'ver']
+);
+
+// Reseñas (se ven sin sesión; escriben clientes y rescatistas; responde la veterinaria).
+$router->get(
+    '/api/resenas',
+    [ResenaControlador::class, 'listar']
+);
+
+$router->post(
+    '/api/resenas',
+    [ResenaControlador::class, 'crear']
+);
+
+$router->delete(
+    '/api/resenas/{id}',
+    [ResenaControlador::class, 'borrar']
+);
+
+$router->put(
+    '/api/resenas/{id}/respuesta',
+    [ResenaControlador::class, 'responder']
 );
 
 // Validación de rescatistas (veterinario).
