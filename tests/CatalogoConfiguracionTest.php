@@ -144,4 +144,19 @@ final class CatalogoConfiguracionTest extends TestCase
         $this->assertArrayHasKey('porcentaje_reintegro_anticipado', $errores);
         $this->assertArrayHasKey('horas_anticipacion_reintegro', $errores);
     }
+
+    // El precio de la consulta (Pacientes, promoción de turnos): pesos enteros, de 0 a 1.000.000.
+    public function testElPrecioDeLaConsultaEsEnPesosEnteros(): void
+    {
+        $this->assertSame('15000', CatalogoConfiguracion::defecto('precio_consulta'));   // como texto, igual que se guarda
+
+        [$limpios, $errores] = CatalogoConfiguracion::validar(['precio_consulta' => 18500], []);
+        $this->assertSame([], $errores);
+        $this->assertSame(['precio_consulta' => '18500'], $limpios);
+
+        [, $errores] = CatalogoConfiguracion::validar(['precio_consulta' => 1000001], []);
+        $this->assertArrayHasKey('precio_consulta', $errores);
+        [, $errores] = CatalogoConfiguracion::validar(['precio_consulta' => '15000.50'], []);
+        $this->assertArrayHasKey('precio_consulta', $errores);
+    }
 }

@@ -32,6 +32,14 @@ class CatalogoConfiguracion
             'tipo' => 'HORA', 'defecto' => '20:00', 'minimo' => '07:00', 'maximo' => '23:59', 'unidad' => null,
             'usa' => 'Pacientes',
         ],
+        // Lo usa Pacientes: cada turno guarda el precio base al sacarse (migración 020), con el
+        // descuento de su franja si está promocionada. La consulta toma ese valor y no se edita.
+        'precio_consulta' => [
+            'grupo' => 'TURNOS', 'nombre' => 'Precio de la consulta',
+            'ayuda' => 'El valor base de la consulta, en pesos. Cada turno lo guarda al sacarse (con el descuento de su franja, si está en promoción): un cambio vale para los turnos nuevos.',
+            'tipo' => 'ENTERO', 'defecto' => 15000, 'minimo' => 0, 'maximo' => 1000000, 'unidad' => 'pesos',
+            'usa' => 'Pacientes',
+        ],
         'dias_aviso_vacuna' => [
             'grupo' => 'AVISOS', 'nombre' => 'Aviso de vacuna próxima',
             'ayuda' => 'Con cuántos días de anticipación se le avisa al cliente que a su mascota le toca una vacuna.',

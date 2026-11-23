@@ -421,6 +421,7 @@ Los parámetros que la veterinaria cambia desde su panel (pantalla `panel/config
 |---|---|---|---|---|
 | `hora_apertura` | HORA | `08:00` | 06:00 a 22:00 | Pacientes (turnos) |
 | `hora_cierre` | HORA | `20:00` | 07:00 a 23:59, después de la apertura | Pacientes (turnos) |
+| `precio_consulta` | ENTERO | 15000 | 0 a 1.000.000 pesos | Pacientes (precio de cada turno al sacarse; la franja promocionada le aplica su descuento) |
 | `dias_aviso_vacuna` | ENTERO | 7 | 1 a 30 días | Reportes (motor) |
 | `dias_control_adopcion_1` | ENTERO | 30 | 7 a 180 días | Reportes (motor) |
 | `dias_control_adopcion_2` | ENTERO | 90 | 14 a 365 días, después del primero | Reportes (motor) |
