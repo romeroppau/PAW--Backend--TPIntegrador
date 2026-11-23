@@ -119,6 +119,16 @@ $router->get(
     [NotificacionControlador::class, 'listar']
 );
 
+$router->get(
+    '/api/notificaciones/historial',
+    [NotificacionControlador::class, 'historial']
+);
+
+$router->post(
+    '/api/notificaciones/leidas',
+    [NotificacionControlador::class, 'marcarTodasLeidas']
+);
+
 $router->post(
     '/api/notificaciones/{id}/leida',
     [NotificacionControlador::class, 'marcarLeida']

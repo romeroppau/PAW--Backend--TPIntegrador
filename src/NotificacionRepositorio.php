@@ -43,8 +43,12 @@ class NotificacionRepositorio
         return (bool) $stmt->fetchColumn();
     }
 
+    /** Cuántos avisos sin leer muestra la campana (los más nuevos). El resto, en el historial. */
+    public const EN_LA_CAMPANA = 10;
+
     /**
-     * Los avisos de la campana: solo canal WEB, no leídos primero.
+     * Los avisos de la campana: solo los SIN LEER del canal WEB, los más nuevos primero, hasta
+     * EN_LA_CAMPANA. Al marcarlos como leídos dejan la campana y quedan en el historial.
      * Los de WhatsApp quedan solo para el envío (un aviso por los dos canales son dos filas).
      */
     public function listarDeUsuario(int $usuarioId): array
@@ -52,20 +56,62 @@ class NotificacionRepositorio
         $stmt = $this->db->prepare(
             "SELECT id, tipo, canal, mensaje, fecha_programada, leida
              FROM notificacion
-             WHERE usuario_id = ? AND canal = 'WEB'
-             ORDER BY leida ASC, fecha_programada DESC, id DESC
-             LIMIT 100"
+             WHERE usuario_id = ? AND canal = 'WEB' AND leida = 0
+             ORDER BY fecha_programada DESC, id DESC
+             LIMIT " . self::EN_LA_CAMPANA
         );
         $stmt->execute([$usuarioId]);
 
-        return array_map(fn($f) => [
+        return array_map([self::class, 'aviso'], $stmt->fetchAll(PDO::FETCH_ASSOC));
+    }
+
+    /**
+     * El historial (página "Mis notificaciones"): los avisos WEB del usuario entre $desde y $hasta
+     * (fechas "Y-m-d", inclusive), los más nuevos primero, de a $porPagina.
+     * $estado: null (todas), 'SIN_LEER' o 'LEIDAS'. Devuelve [avisos, hayMas].
+     */
+    public function historial(int $usuarioId, ?string $estado, string $desde, string $hasta, int $pagina, int $porPagina): array
+    {
+        $sql = "SELECT id, tipo, canal, mensaje, fecha_programada, leida
+                FROM notificacion
+                WHERE usuario_id = ? AND canal = 'WEB' AND DATE(fecha_programada) BETWEEN ? AND ?";
+        $valores = [$usuarioId, $desde, $hasta];
+
+        if ($estado === 'SIN_LEER') {
+            $sql .= ' AND leida = 0';
+        } elseif ($estado === 'LEIDAS') {
+            $sql .= ' AND leida = 1';
+        }
+
+        $sql .= ' ORDER BY fecha_programada DESC, id DESC LIMIT ' . ($porPagina + 1) . ' OFFSET ' . (($pagina - 1) * $porPagina);
+        $stmt = $this->db->prepare($sql);
+        $stmt->execute($valores);
+        $avisos = array_map([self::class, 'aviso'], $stmt->fetchAll(PDO::FETCH_ASSOC));
+
+        return [array_slice($avisos, 0, $porPagina), count($avisos) > $porPagina];
+    }
+
+    /** Marca como leídos todos los avisos WEB sin leer del usuario. Devuelve cuántos marcó. */
+    public function marcarTodasLeidas(int $usuarioId): int
+    {
+        $stmt = $this->db->prepare(
+            "UPDATE notificacion SET leida = 1 WHERE usuario_id = ? AND canal = 'WEB' AND leida = 0"
+        );
+        $stmt->execute([$usuarioId]);
+        return $stmt->rowCount();
+    }
+
+    /** Una fila como la ven la campana y el historial. */
+    private static function aviso(array $f): array
+    {
+        return [
             'id' => (int) $f['id'],
             'tipo' => $f['tipo'],
             'canal' => $f['canal'],
             'mensaje' => $f['mensaje'],
             'fecha' => $f['fecha_programada'],
             'leida' => (bool) $f['leida'],
-        ], $stmt->fetchAll(PDO::FETCH_ASSOC));
+        ];
     }
 
     /** Cuántos avisos web sin leer tiene el usuario (el número de la campana). */

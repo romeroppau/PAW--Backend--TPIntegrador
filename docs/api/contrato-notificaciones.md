@@ -11,8 +11,10 @@ Tabla `notificacion` (migraciones 008, 011 y 018 del Gateway).
 | Método | Ruta | Quién | Para qué |
 |---|---|---|---|
 | POST | `/internal/notificaciones` | Otro módulo (`X-Servicio-Token`) | Crear un aviso |
-| GET | `/api/notificaciones` | Cualquier usuario con sesión | La campana |
+| GET | `/api/notificaciones` | Cualquier usuario con sesión | La campana: las 10 sin leer más nuevas |
+| GET | `/api/notificaciones/historial` | Cualquier usuario con sesión | "Mis notificaciones": todas, con filtros, de a 20 |
 | POST | `/api/notificaciones/{id}/leida` | El dueño del aviso (con CSRF) | Marcarlo leído |
+| POST | `/api/notificaciones/leidas` | Cualquier usuario con sesión (con CSRF) | Marcar todas como leídas |
 | POST | `/api/notificaciones/tareas/enviar` | GitHub Actions (`X-Tarea-Token`), cada 15 min | Enviar los WhatsApp pendientes |
 
 ## POST /internal/notificaciones
@@ -44,7 +46,7 @@ Respuestas:
 
 ## GET /api/notificaciones
 
-Las del usuario de la sesión, **solo de canal WEB**, las no leídas primero (hasta 100).
+La campana: los avisos **sin leer** del usuario de la sesión, **solo de canal WEB**, los más nuevos primero, **hasta 10**. Al marcarlos como leídos dejan la campana; todos (leídos o no) se ven en el historial. `no_leidas` cuenta todos los sin leer (puede ser más de 10).
 
 ```json
 { "no_leidas": 2,
@@ -53,6 +55,27 @@ Las del usuario de la sesión, **solo de canal WEB**, las no leídas primero (ha
 ```
 
 `401` sin sesión.
+
+## GET /api/notificaciones/historial
+
+"Mis notificaciones" (Entrega 5): **todos** los avisos WEB del usuario, los más nuevos primero, **de a 20**.
+
+Parámetros (opcionales):
+
+- `estado` = `TODAS` (por defecto), `SIN_LEER` o `LEIDAS`.
+- `desde` y `hasta` (`AAAA-MM-DD`, inclusive): por la fecha del aviso. Sin ellos, **los últimos 30 días** (hoy incluido); con solo `hasta`, los 30 días que terminan ese día.
+- `pagina` (desde 1, por defecto 1): "Ver más" pide la siguiente mientras `hay_mas` sea `true`.
+
+```json
+{ "datos": [ { "id": 901, "tipo": "VACUNA", "canal": "WEB", "mensaje": "…", "fecha": "2026-11-21 10:00:00", "leida": true } ],
+  "pagina": 1, "por_pagina": 20, "hay_mas": false, "desde": "2026-10-25", "hasta": "2026-11-23", "no_leidas": 3 }
+```
+
+`desde` y `hasta` son las fechas que se usaron (para mostrarlas en el filtro). `400 { "error": "Datos inválidos", "campos": { ... } }` si `estado`, una fecha o `pagina` no son válidos, o si `desde` es después de `hasta`. `401` sin sesión.
+
+## POST /api/notificaciones/leidas
+
+Marca como leídos **todos** los avisos WEB sin leer del usuario. Con `X-CSRF-Token`. `200 { "marcadas": 5, "no_leidas": 0 }` (`marcadas` puede ser 0). `401` sin sesión · `403` sin CSRF.
 
 ## POST /api/notificaciones/{id}/leida
 

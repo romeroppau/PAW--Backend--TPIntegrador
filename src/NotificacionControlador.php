@@ -62,7 +62,7 @@ class NotificacionControlador
         Response::json(['aplicado' => $aplicado], 200);
     }
 
-    // GET /api/notificaciones
+    // GET /api/notificaciones   (la campana: las 10 sin leer más nuevas y cuántas hay sin leer)
     public static function listar(): void
     {
         $sesion = Auth::requerirRol([]);   // 401 si no hay sesión
@@ -72,6 +72,67 @@ class NotificacionControlador
             'no_leidas' => $repo->contarNoLeidas((int) $sesion['id']),
             'datos' => $repo->listarDeUsuario((int) $sesion['id']),
         ], 200);
+    }
+
+    // GET /api/notificaciones/historial?estado=SIN_LEER&desde=2026-10-25&hasta=2026-11-23&pagina=1
+    // "Mis notificaciones": todos los avisos web del usuario, con filtros, de a 20. Sin fechas: los
+    // últimos 30 días (hoy incluido).
+    public static function historial(): void
+    {
+        $sesion = Auth::requerirRol([]);
+        $errores = [];
+
+        $estado = $_GET['estado'] ?? 'TODAS';
+        if (!is_string($estado) || !in_array($estado, ['TODAS', 'SIN_LEER', 'LEIDAS'], true)) {
+            $errores['estado'] = 'Tiene que ser TODAS, SIN_LEER o LEIDAS';
+        }
+
+        $pagina = $_GET['pagina'] ?? '1';
+        if (!is_string($pagina) || !preg_match('/^[1-9]\d{0,5}$/', $pagina)) {
+            $errores['pagina'] = 'Tiene que ser un número entero desde 1';
+        }
+
+        $hoy = new DateTimeImmutable('today');
+        $hasta = self::fechaDelFiltro($_GET['hasta'] ?? null, $hoy, 'hasta', $errores);
+        $desde = self::fechaDelFiltro($_GET['desde'] ?? null, ($hasta ?? $hoy)->modify('-29 days'), 'desde', $errores);
+        if ($desde !== null && $hasta !== null && $desde > $hasta) {
+            $errores['desde'] = 'Tiene que ser antes o igual que "hasta"';
+        }
+
+        if ($errores !== []) {
+            Response::error('Datos inválidos', 400, $errores);
+            return;
+        }
+
+        $repo = new NotificacionRepositorio(Database::conectar());
+        [$avisos, $hayMas] = $repo->historial(
+            (int) $sesion['id'],
+            $estado === 'TODAS' ? null : $estado,
+            $desde->format('Y-m-d'),
+            $hasta->format('Y-m-d'),
+            (int) $pagina,
+            self::POR_PAGINA
+        );
+
+        Response::json([
+            'datos' => $avisos,
+            'pagina' => (int) $pagina,
+            'por_pagina' => self::POR_PAGINA,
+            'hay_mas' => $hayMas,
+            'desde' => $desde->format('Y-m-d'),
+            'hasta' => $hasta->format('Y-m-d'),
+            'no_leidas' => $repo->contarNoLeidas((int) $sesion['id']),
+        ], 200);
+    }
+
+    // POST /api/notificaciones/leidas   (marcar todas como leídas)
+    public static function marcarTodasLeidas(): void
+    {
+        $sesion = Auth::requerirRol([]);
+        Auth::verificarCsrf($sesion);
+
+        $marcadas = (new NotificacionRepositorio(Database::conectar()))->marcarTodasLeidas((int) $sesion['id']);
+        Response::json(['marcadas' => $marcadas, 'no_leidas' => 0], 200);
     }
 
     // POST /api/notificaciones/{id}/leida
@@ -97,6 +158,24 @@ class NotificacionControlador
         }
 
         Response::json(['id' => (int) $id, 'leida' => true], 200);
+    }
+
+    private const POR_PAGINA = 20;
+
+    // Una fecha "AAAA-MM-DD" del filtro; si no vino (o vino vacía), $defecto. Si es inválida, anota el error.
+    private static function fechaDelFiltro(mixed $valor, DateTimeImmutable $defecto, string $campo, array &$errores): ?DateTimeImmutable
+    {
+        if ($valor === null || $valor === '') {
+            return $defecto;
+        }
+
+        $fecha = is_string($valor) ? DateTimeImmutable::createFromFormat('!Y-m-d', $valor) : false;
+        if ($fecha === false || $fecha->format('Y-m-d') !== $valor) {
+            $errores[$campo] = 'Tiene que ser una fecha AAAA-MM-DD';
+            return null;
+        }
+
+        return $fecha;
     }
 
     private static function fechaValida(string $f): bool
