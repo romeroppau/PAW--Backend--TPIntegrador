@@ -33,12 +33,12 @@ class ValidadorRegistro
         return [$limpios, $errores];
     }
 
-    // "Mis datos": lo que cada uno puede cambiar de su cuenta. El email no se cambia (es el usuario
-    // para entrar), así que si viene se ignora.
-    // - Cliente y rescatista: nombre y teléfono, obligatorios como en el registro.
+    // "Mis datos": lo que cada uno puede cambiar de su cuenta con "Guardar". El email no se cambia (es
+    // el usuario para entrar) y el teléfono tampoco: se cambia aparte, verificando el número nuevo por
+    // WhatsApp (VerificacionControlador). Si vienen, se ignoran.
+    // - Todos: el nombre (obligatorio).
     // - Rescatista: además la organización (opcional).
-    // - Veterinaria: nombre (obligatorio) y teléfono (opcional: se creó sin teléfono).
-    // Devuelve [datos limpios, errores]; en limpios, telefono es null si la veterinaria lo dejó vacío.
+    // Devuelve [datos limpios, errores].
     public static function cuenta(array $datos, string $rol): array
     {
         $limpios = [];
@@ -46,18 +46,22 @@ class ValidadorRegistro
 
         self::validarNombre($datos, $limpios, $errores);
 
-        $telefono = self::texto($datos, 'telefono');
-        if ($rol === 'VETERINARIO' && ($telefono === null || $telefono === '')) {
-            $limpios['telefono'] = null;
-        } else {
-            self::validarTelefono($datos, $limpios, $errores);
-        }
-
         if ($rol === 'RESCATISTA') {
             self::validarOrganizacion($datos, $limpios, $errores);
         }
 
         return [$limpios, $errores];
+    }
+
+    // Un teléfono suelto (pedir el código de verificación del WhatsApp): las mismas reglas y los mismos
+    // mensajes que en el registro. Devuelve [los 10 dígitos, null] o [null, el mensaje de error].
+    public static function telefono(mixed $telefono): array
+    {
+        $limpios = [];
+        $errores = [];
+        self::validarTelefono(['telefono' => $telefono], $limpios, $errores);
+
+        return [$limpios['telefono'] ?? null, $errores['telefono'] ?? null];
     }
 
     // Cambio de contraseña: la actual (se compara después con la guardada), la nueva con las mismas

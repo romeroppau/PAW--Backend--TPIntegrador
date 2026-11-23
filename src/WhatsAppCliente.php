@@ -121,6 +121,54 @@ class WhatsAppCliente
 
     public function enviar(string $telefono, string $nombre, string $mensaje): ResultadoWhatsApp
     {
+        return $this->enviarPlantilla($telefono, self::plantillaDeAviso($nombre, $mensaje));
+    }
+
+    /**
+     * El código de verificación del WhatsApp (registro y cambio de número; VerificacionControlador).
+     * Con WHATSAPP_PLANTILLA_CODIGO usa esa plantilla de autenticación de Meta (el código va en el
+     * texto y en el botón "Copiar código"); si no, sale con la plantilla de avisos, ya aprobada.
+     */
+    public function enviarCodigo(string $telefono, string $nombre, string $codigo): ResultadoWhatsApp
+    {
+        $plantillaCodigo = getenv('WHATSAPP_PLANTILLA_CODIGO') ?: '';
+        if ($plantillaCodigo === '') {
+            return $this->enviarPlantilla($telefono, self::plantillaDeAviso($nombre, VerificacionWhatsApp::mensaje($codigo)));
+        }
+
+        return $this->enviarPlantilla($telefono, [
+            'name' => $plantillaCodigo,
+            'language' => ['code' => getenv('WHATSAPP_IDIOMA') ?: 'es_AR'],
+            'components' => [
+                ['type' => 'body', 'parameters' => [['type' => 'text', 'text' => $codigo]]],
+                [
+                    'type' => 'button', 'sub_type' => 'url', 'index' => '0',
+                    'parameters' => [['type' => 'text', 'text' => $codigo]],
+                ],
+            ],
+        ]);
+    }
+
+    // La plantilla de avisos (aviso_huellavet): "Hola {{1}}, {{2}}".
+    private static function plantillaDeAviso(string $nombre, string $mensaje): array
+    {
+        return [
+            'name' => getenv('WHATSAPP_PLANTILLA') ?: 'aviso_huellavet',
+            'language' => ['code' => getenv('WHATSAPP_IDIOMA') ?: 'es_AR'],
+            'components' => [
+                [
+                    'type' => 'body',
+                    'parameters' => [
+                        ['type' => 'text', 'text' => $nombre],
+                        ['type' => 'text', 'text' => $mensaje],
+                    ],
+                ]
+            ],
+        ];
+    }
+
+    private function enviarPlantilla(string $telefono, array $plantilla): ResultadoWhatsApp
+    {
         $destino = self::normalizarTelefono($telefono);
         if ($destino === null) {
             Logger::error('WhatsApp: teléfono con formato inválido');
@@ -139,35 +187,23 @@ class WhatsAppCliente
             return ResultadoWhatsApp::configuracion('SIN_CONFIGURACION');
         }
 
-        $resultado = $this->llamarApi($token, $numeroId, $destino, $nombre, $mensaje);
+        $resultado = $this->llamarApi($token, $numeroId, $destino, $plantilla);
 
         // Número de prueba + celular argentino: probar sin el 9.
         if ($resultado->codigoMeta === 131030 && ($alt = self::formaAlternativa($destino)) !== null) {
-            $resultado = $this->llamarApi($token, $numeroId, $alt, $nombre, $mensaje);
+            $resultado = $this->llamarApi($token, $numeroId, $alt, $plantilla);
         }
 
         return $resultado;
     }
 
-    private function llamarApi(string $token, string $numeroId, string $destino, string $nombre, string $mensaje): ResultadoWhatsApp
+    private function llamarApi(string $token, string $numeroId, string $destino, array $plantilla): ResultadoWhatsApp
     {
         $cuerpo = json_encode([
             'messaging_product' => 'whatsapp',
             'to' => $destino,
             'type' => 'template',
-            'template' => [
-                'name' => getenv('WHATSAPP_PLANTILLA') ?: 'aviso_huellavet',
-                'language' => ['code' => getenv('WHATSAPP_IDIOMA') ?: 'es_AR'],
-                'components' => [
-                    [
-                        'type' => 'body',
-                        'parameters' => [
-                            ['type' => 'text', 'text' => $nombre],
-                            ['type' => 'text', 'text' => $mensaje],
-                        ],
-                    ]
-                ],
-            ],
+            'template' => $plantilla,
         ], JSON_UNESCAPED_UNICODE);
 
         $version = getenv('WHATSAPP_API_VERSION') ?: self::VERSION_API;

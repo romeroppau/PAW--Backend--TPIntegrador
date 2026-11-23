@@ -10,7 +10,8 @@ Las reglas generales que valen para todos los modulos (formato JSON,formato de e
 
 | Método y ruta | Quién | Para qué |
 |---|---|---|
-| `POST /api/auth/registro/cliente` | Público | Crear una cuenta de cliente. Deja la sesión iniciada |
+| `POST /api/auth/registro/codigo` | Público | Mandar por WhatsApp el código para registrarse (Entrega 5) |
+| `POST /api/auth/registro/cliente` | Público | Crear una cuenta de cliente, con el código del WhatsApp. Deja la sesión iniciada |
 | `POST /api/auth/registro/rescatista` | Público | Crear una cuenta de rescatista en estado `PENDIENTE`. Deja la sesión iniciada |
 | `POST /api/auth/login` | Público | Iniciar sesión |
 | `POST /api/auth/logout` | Con sesión | Cerrar sesión |
@@ -19,7 +20,9 @@ Las reglas generales que valen para todos los modulos (formato JSON,formato de e
 | `POST /api/rescatistas/{id}/aprobar` | Veterinario | Aprobar a un rescatista pendiente: desde ahí puede publicar en adopciones |
 | `POST /api/rescatistas/{id}/rechazar` | Veterinario | Rechazar a un rescatista pendiente |
 | `GET /api/cuenta` | Con sesión | Mis datos: los datos de la propia cuenta (Entrega 5) |
-| `PUT /api/cuenta` | Con sesión | Cambiar el nombre y el teléfono (y la organización, el rescatista) |
+| `PUT /api/cuenta` | Con sesión | Cambiar el nombre (y la organización, el rescatista) |
+| `POST /api/cuenta/telefono/codigo` | Con sesión | Mandar por WhatsApp el código al número nuevo (Entrega 5) |
+| `POST /api/cuenta/telefono` | Con sesión | Confirmar el código: recién ahí cambia el teléfono |
 | `PUT /api/cuenta/contrasena` | Con sesión | Cambiar la contraseña, con la actual |
 | `GET /api/clientes` | Veterinario | Lista de clientes, con buscador, de a 20 (Entrega 5) |
 | `GET /api/clientes/{id}` | Veterinario | Ficha de un cliente (o de un rescatista, dueño de mascotas) |
@@ -97,11 +100,12 @@ Crea una cuenta con rol `CLIENTE` y deja la sesión iniciada.
   "nombre": "Ana Pérez",
   "email": "ana@mail.com",
   "password": "unaClave123",
-  "telefono": "2323 555555"
+  "telefono": "2323 555555",
+  "codigo": "482913"
 }
 ```
 
-Si el pedido trae otros campos (por ejemplo `rol`), se ignoran.
+`codigo` (Entrega 5): el que llegó por WhatsApp al pedirlo con `POST /api/auth/registro/codigo` para ese mismo teléfono (ver "Verificación del WhatsApp"). La cuenta se crea solo si es correcto: nunca queda una cuenta con el WhatsApp sin verificar. Si el pedido trae otros campos (por ejemplo `rol`), se ignoran.
 
 **201 Created**, con la cookie `huellavet_sesion`:
 
@@ -129,6 +133,8 @@ Si el pedido trae otros campos (por ejemplo `rol`), se ignoran.
   }
   ```
 
+- `400` con `campos.codigo`, si el código no sirve (se revisa después de los demás campos y del email): "Escribí el código de 6 números que te llegó por WhatsApp", "Primero pedí el código por WhatsApp", "El código venció. Pedí uno nuevo.", "Escribiste mal el código muchas veces. Pedí uno nuevo." o "El código no es correcto".
+
 - `409`, si el email ya tiene una cuenta:
 
   ```json
@@ -149,7 +155,8 @@ Crea una cuenta con rol `RESCATISTA` en estado `PENDIENTE` y deja la sesión ini
   "email": "juan@mail.com",
   "password": "otraClave456",
   "telefono": "+54 9 2323 444444",
-  "organizacion": "Patitas Luján"
+  "organizacion": "Patitas Luján",
+  "codigo": "315620"
 }
 ```
 
@@ -167,7 +174,7 @@ Crea una cuenta con rol `RESCATISTA` en estado `PENDIENTE` y deja la sesión ini
 }
 ```
 
-**Errores:** los mismos que el registro de cliente (`400` y `409`).
+**Errores:** los mismos que el registro de cliente (`400`, también por el código, y `409`).
 
 ---
 
@@ -318,10 +325,11 @@ Cada usuario (cliente, rescatista o veterinaria) ve y cambia **los datos de su p
 ### PUT /api/cuenta
 
 ```json
-{ "nombre": "Ana Pérez", "telefono": "2323 555555", "organizacion": "Patitas Luján" }
+{ "nombre": "Ana Pérez", "organizacion": "Patitas Luján" }
 ```
 
-- `nombre` y `telefono`: las mismas reglas y mensajes que en el registro (tabla de arriba). El teléfono es **obligatorio para cliente y rescatista** y **opcional para la veterinaria** (vacío = sin teléfono).
+- `nombre`: las mismas reglas y mensajes que en el registro (tabla de arriba).
+- `telefono`: **no se cambia acá** (si viene, se ignora). Se cambia verificando el número nuevo por WhatsApp: ver "Verificación del WhatsApp".
 - `organizacion`: solo la usa el rescatista (opcional, hasta 100 caracteres; vacía = sin organización). Para los demás se ignora.
 - `email`: si viene, se ignora.
 
@@ -338,6 +346,50 @@ Cada usuario (cliente, rescatista o veterinaria) ve y cambia **los datos de su p
 - `repetir`: igual a la nueva ("Las contraseñas nuevas no coinciden").
 
 `200 { "mensaje": "Tu contraseña se cambió" }`. La sesión sigue abierta; la nueva se usa al próximo inicio de sesión. Si algo está mal, `400` con el campo (también si la actual no es correcta: no es un `401`, la sesión no se cierra).
+
+## Verificación del WhatsApp (Entrega 5)
+
+Los avisos salen por WhatsApp, así que el número tiene que ser de quien se registra: si no, un aviso con datos de su mascota le llegaría a un desconocido. Por eso **nunca queda una cuenta con el WhatsApp sin verificar**:
+
+- **Registro:** primero se pide el código al número (`POST /api/auth/registro/codigo`) y después se manda el registro con ese código. La cuenta se crea solo si el código es correcto.
+- **Cambio de número (Mis datos):** se pide el código al número nuevo (`POST /api/cuenta/telefono/codigo`) y se confirma (`POST /api/cuenta/telefono`). **Recién ahí cambia el teléfono**; mientras tanto sigue el anterior.
+- Las cuentas que ya existían (antes de la migración 019) quedan como estaban.
+
+Reglas (tabla `verificacion_whatsapp`, migración 019):
+
+- El código es de **6 números**, vence a los **10 minutos** y acepta **5 intentos**. Se guarda hasheado. Sirve una sola vez y vale el último que se pidió.
+- A un mismo número se le manda como mucho **un código por minuto** y **5 por hora** (para no llenar de mensajes un número ajeno ni gastar mensajes).
+- Se manda con la plantilla de avisos (`WHATSAPP_PLANTILLA`), o con una de autenticación de Meta si está configurada `WHATSAPP_PLANTILLA_CODIGO`.
+- En `ENTORNO` local y ci el WhatsApp no sale (como los avisos) y la respuesta trae además `codigo`, para poder probar. En dev y en producción, nunca.
+
+### POST /api/auth/registro/codigo
+
+Público. `{ "telefono": "2323 555555", "nombre": "Ana Pérez" }` (`nombre` es opcional: solo para el saludo del WhatsApp).
+
+### POST /api/cuenta/telefono/codigo
+
+Con sesión y CSRF. `{ "telefono": "2323 666666" }`: el número **nuevo**. Si es el mismo que ya tiene, `400` con `campos.telefono` "Ese ya es tu número".
+
+**Las dos responden igual. 200:**
+
+```json
+{
+  "mensaje": "Te mandamos un código por WhatsApp al 2323555555.",
+  "telefono": "2323555555",
+  "vence_en_minutos": 10,
+  "reenviar_en_segundos": 60
+}
+```
+
+**Errores:**
+
+- `400 { "error": "Datos inválidos", "campos": { "telefono": "..." } }`: el teléfono no es válido (mismos mensajes que el registro) o WhatsApp no lo pudo entregar ("No pudimos mandarte el código por WhatsApp a ese número. Revisá que sea tu celular y que tenga WhatsApp.").
+- `429 { "error": "Esperá 40 segundos para pedir otro código", "espera_segundos": 40 }` (o "Pediste muchos códigos para este número. Probá de nuevo en N minutos.").
+- `503 { "error": "No pudimos mandar el código por WhatsApp. Probá de nuevo en unos minutos." }`: WhatsApp no anda (configuración o Meta caído).
+
+### POST /api/cuenta/telefono
+
+Con sesión y CSRF. `{ "codigo": "482913" }`. Si es el del último pedido de cambio, el teléfono pasa a ser el número nuevo. `200` con la cuenta actualizada (forma de "Mis datos"). `400` con `campos.codigo` y los mismos mensajes que el registro.
 
 ## Clientes (Entrega 5)
 

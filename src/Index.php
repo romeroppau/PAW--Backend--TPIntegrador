@@ -31,6 +31,9 @@ require_once __DIR__ . '/../src/WhatsAppCliente.php';
 require_once __DIR__ . '/../src/CatalogoConfiguracion.php';
 require_once __DIR__ . '/../src/ConfiguracionRepositorio.php';
 require_once __DIR__ . '/../src/ConfiguracionControlador.php';
+require_once __DIR__ . '/../src/VerificacionWhatsApp.php';
+require_once __DIR__ . '/../src/VerificacionRepositorio.php';
+require_once __DIR__ . '/../src/VerificacionControlador.php';
 date_default_timezone_set('America/Argentina/Buenos_Aires');
 
 // 3. Crear el router y registrar las rutas.
@@ -39,6 +42,12 @@ $router = new Router();
 $router->post(
     '/api/auth/login',
     [AuthControlador::class, 'login']
+);
+
+// Verificación del WhatsApp: el código para registrarse (público).
+$router->post(
+    '/api/auth/registro/codigo',
+    [VerificacionControlador::class, 'codigoDelRegistro']
 );
 
 $router->post(
@@ -75,6 +84,17 @@ $router->put(
 $router->put(
     '/api/cuenta/contrasena',
     [CuentaControlador::class, 'cambiarContrasena']
+);
+
+// Cambiar el teléfono: código al número nuevo y confirmación (Verificación del WhatsApp).
+$router->post(
+    '/api/cuenta/telefono/codigo',
+    [VerificacionControlador::class, 'codigoDelCambio']
+);
+
+$router->post(
+    '/api/cuenta/telefono',
+    [VerificacionControlador::class, 'confirmarCambio']
 );
 
 // Clientes (veterinario): la lista y la ficha de cada uno.
