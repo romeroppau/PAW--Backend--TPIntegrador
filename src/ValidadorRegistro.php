@@ -1,6 +1,8 @@
 <?php
 
 // Valida los datos de los registros de cliente y de rescatista, con las reglas del contrato de la API.
+// También "Mis datos" (cambiar nombre, teléfono y organización) y el cambio de contraseña, con las
+// mismas reglas y los mismos mensajes que el registro.
 // Devuelve dos cosas: los datos ya limpios (sin espacios de más, email en minúsculas, teléfono normalizado)
 // y los errores por campo, que van en "campos" de la respuesta 400.
 // Se valida en el servidor aunque el formulario también valide: cualquiera puede mandar el pedido
@@ -26,15 +28,60 @@ class ValidadorRegistro
         $errores = [];
 
         self::validarComunes($datos, $limpios, $errores);
+        self::validarOrganizacion($datos, $limpios, $errores);
 
-        $organizacion = $datos['organizacion'] ?? null;
+        return [$limpios, $errores];
+    }
 
-        if ($organizacion === null || (is_string($organizacion) && trim($organizacion) === '')) {
-            $limpios['organizacion'] = null; // vacía o ausente: el rescatista no tiene organización
-        } elseif (!is_string($organizacion) || mb_strlen(trim($organizacion)) > 100) {
-            $errores['organizacion'] = 'La organización puede tener hasta 100 caracteres';
+    // "Mis datos": lo que cada uno puede cambiar de su cuenta. El email no se cambia (es el usuario
+    // para entrar), así que si viene se ignora.
+    // - Cliente y rescatista: nombre y teléfono, obligatorios como en el registro.
+    // - Rescatista: además la organización (opcional).
+    // - Veterinaria: nombre (obligatorio) y teléfono (opcional: se creó sin teléfono).
+    // Devuelve [datos limpios, errores]; en limpios, telefono es null si la veterinaria lo dejó vacío.
+    public static function cuenta(array $datos, string $rol): array
+    {
+        $limpios = [];
+        $errores = [];
+
+        self::validarNombre($datos, $limpios, $errores);
+
+        $telefono = self::texto($datos, 'telefono');
+        if ($rol === 'VETERINARIO' && ($telefono === null || $telefono === '')) {
+            $limpios['telefono'] = null;
         } else {
-            $limpios['organizacion'] = trim($organizacion);
+            self::validarTelefono($datos, $limpios, $errores);
+        }
+
+        if ($rol === 'RESCATISTA') {
+            self::validarOrganizacion($datos, $limpios, $errores);
+        }
+
+        return [$limpios, $errores];
+    }
+
+    // Cambio de contraseña: la actual (se compara después con la guardada), la nueva con las mismas
+    // reglas que el registro, y la nueva repetida. Devuelve [datos limpios, errores].
+    public static function cambioDeContrasena(array $datos): array
+    {
+        $limpios = [];
+        $errores = [];
+
+        $actual = $datos['actual'] ?? null;
+        if (!is_string($actual) || $actual === '') {
+            $errores['actual'] = 'Escribí tu contraseña actual';
+        } else {
+            $limpios['actual'] = $actual;
+        }
+
+        self::validarPassword($datos, 'nueva', $limpios, $errores);
+
+        $repetir = $datos['repetir'] ?? null;
+        if (!isset($errores['nueva']) && $repetir !== ($limpios['nueva'] ?? null)) {
+            $errores['repetir'] = 'Las contraseñas nuevas no coinciden';
+        }
+        if (!isset($errores['nueva']) && isset($limpios['actual']) && $limpios['nueva'] === $limpios['actual']) {
+            $errores['nueva'] = 'La contraseña nueva tiene que ser distinta de la actual';
         }
 
         return [$limpios, $errores];
@@ -45,16 +92,7 @@ class ValidadorRegistro
     // directamente (se pasan "por referencia"), en vez de trabajar con una copia.
     private static function validarComunes(array $datos, array &$limpios, array &$errores): void
     {
-        // Nombre: obligatorio, de 2 a 100 caracteres. mb_strlen cuenta bien las tildes y la ñ.
-        $nombre = self::texto($datos, 'nombre');
-
-        if ($nombre === null || $nombre === '') {
-            $errores['nombre'] = 'El nombre es obligatorio';
-        } elseif (mb_strlen($nombre) < 2 || mb_strlen($nombre) > 100) {
-            $errores['nombre'] = 'El nombre debe tener entre 2 y 100 caracteres';
-        } else {
-            $limpios['nombre'] = $nombre;
-        }
+        self::validarNombre($datos, $limpios, $errores);
 
         // Email: obligatorio, válido y de hasta 150 caracteres. Se guarda en minúsculas.
         $email = self::texto($datos, 'email');
@@ -67,21 +105,45 @@ class ValidadorRegistro
             $limpios['email'] = strtolower($email);
         }
 
-        // Contraseña: obligatoria, de 8 a 72 caracteres (72 es el límite de bcrypt).
-        // A la contraseña NO se le sacan los espacios: si la persona los puso, son parte de su contraseña.
-        $password = $datos['password'] ?? null;
+        self::validarPassword($datos, 'password', $limpios, $errores);
+        self::validarTelefono($datos, $limpios, $errores);
+    }
+
+    // Nombre: obligatorio, de 2 a 100 caracteres. mb_strlen cuenta bien las tildes y la ñ.
+    private static function validarNombre(array $datos, array &$limpios, array &$errores): void
+    {
+        $nombre = self::texto($datos, 'nombre');
+
+        if ($nombre === null || $nombre === '') {
+            $errores['nombre'] = 'El nombre es obligatorio';
+        } elseif (mb_strlen($nombre) < 2 || mb_strlen($nombre) > 100) {
+            $errores['nombre'] = 'El nombre debe tener entre 2 y 100 caracteres';
+        } else {
+            $limpios['nombre'] = $nombre;
+        }
+    }
+
+    // Contraseña ($campo: "password" en el registro, "nueva" al cambiarla): obligatoria, de 8 a 72
+    // caracteres (72 es el límite de bcrypt). No se le sacan los espacios: si la persona los puso,
+    // son parte de su contraseña.
+    private static function validarPassword(array $datos, string $campo, array &$limpios, array &$errores): void
+    {
+        $password = $datos[$campo] ?? null;
 
         if ($password === null || $password === '') {
-            $errores['password'] = 'La contraseña es obligatoria';
+            $errores[$campo] = 'La contraseña es obligatoria';
         } elseif (!is_string($password) || mb_strlen($password) < 8 || mb_strlen($password) > 72) {
-            $errores['password'] = 'La contraseña debe tener entre 8 y 72 caracteres';
+            $errores[$campo] = 'La contraseña debe tener entre 8 y 72 caracteres';
         } else {
-            $limpios['password'] = $password;
+            $limpios[$campo] = $password;
         }
+    }
 
-        // Teléfono: obligatorio y argentino. Se le sacan espacios, guiones y paréntesis.
-        // Formato aceptado: 10 dígitos (código de área sin 0 y número sin 15), con +54 y 9 opcionales adelante.
-        // Se guardan solo los 10 dígitos, así todos los teléfonos quedan iguales en la base.
+    // Teléfono: obligatorio y argentino. Se le sacan espacios, guiones y paréntesis.
+    // Formato aceptado: 10 dígitos (código de área sin 0 y número sin 15), con +54 y 9 opcionales adelante.
+    // Se guardan solo los 10 dígitos, así todos los teléfonos quedan iguales en la base.
+    private static function validarTelefono(array $datos, array &$limpios, array &$errores): void
+    {
         $telefono = self::texto($datos, 'telefono');
 
         if ($telefono === null || $telefono === '') {
@@ -94,6 +156,20 @@ class ValidadorRegistro
             } else {
                 $errores['telefono'] = 'El teléfono no es válido. Ejemplo: 2323 555555';
             }
+        }
+    }
+
+    // Organización del rescatista: opcional, hasta 100 caracteres. Vacía o ausente: null.
+    private static function validarOrganizacion(array $datos, array &$limpios, array &$errores): void
+    {
+        $organizacion = $datos['organizacion'] ?? null;
+
+        if ($organizacion === null || (is_string($organizacion) && trim($organizacion) === '')) {
+            $limpios['organizacion'] = null; // vacía o ausente: el rescatista no tiene organización
+        } elseif (!is_string($organizacion) || mb_strlen(trim($organizacion)) > 100) {
+            $errores['organizacion'] = 'La organización puede tener hasta 100 caracteres';
+        } else {
+            $limpios['organizacion'] = trim($organizacion);
         }
     }
 

@@ -199,8 +199,9 @@ class AuthControlador
 
 
     // Hashea la contraseña con bcrypt de costo 12 (SEGURIDAD.md). Nunca se guarda en limpio.
+    // La usan los registros y el cambio de contraseña de "Mis datos" (CuentaControlador).
     // password_hash agrega una "sal" aleatoria, así dos contraseñas iguales tienen hashes distintos.
-    private static function hashear(string $password): string
+    public static function hashear(string $password): string
     {
         return password_hash($password, PASSWORD_BCRYPT, ['cost' => 12]);
     }

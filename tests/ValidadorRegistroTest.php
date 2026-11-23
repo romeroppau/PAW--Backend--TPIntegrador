@@ -200,4 +200,76 @@ final class ValidadorRegistroTest extends TestCase
         ], $cambios);
     }
 
+
+    // ---------- Mis datos ----------
+
+    public function testMisDatosDeUnClienteNormalizaElTelefonoEIgnoraElEmail(): void
+    {
+        [$limpios, $errores] = ValidadorRegistro::cuenta(
+            ['nombre' => '  Ana Pérez ', 'telefono' => '+54 9 2323 55-5555', 'email' => 'otro@ejemplo.com'],
+            'CLIENTE'
+        );
+
+        $this->assertSame([], $errores);
+        $this->assertSame(['nombre' => 'Ana Pérez', 'telefono' => '2323555555'], $limpios);
+    }
+
+    public function testElClienteYElRescatistaNoPuedenDejarElTelefonoVacio(): void
+    {
+        [, $errores] = ValidadorRegistro::cuenta(['nombre' => 'Ana', 'telefono' => ''], 'CLIENTE');
+        $this->assertSame('El teléfono es obligatorio', $errores['telefono']);
+
+        [, $errores] = ValidadorRegistro::cuenta(['nombre' => 'Ana', 'telefono' => '123'], 'RESCATISTA');
+        $this->assertSame('El teléfono no es válido. Ejemplo: 2323 555555', $errores['telefono']);
+    }
+
+    public function testLaVeterinariaPuedeDejarElTelefonoVacio(): void
+    {
+        [$limpios, $errores] = ValidadorRegistro::cuenta(['nombre' => 'Vet', 'telefono' => ''], 'VETERINARIO');
+
+        $this->assertSame([], $errores);
+        $this->assertNull($limpios['telefono']);
+    }
+
+    public function testSoloElRescatistaCambiaLaOrganizacion(): void
+    {
+        [$limpios] = ValidadorRegistro::cuenta(['nombre' => 'Ana', 'telefono' => '2323555555', 'organizacion' => ' Patitas '], 'RESCATISTA');
+        $this->assertSame('Patitas', $limpios['organizacion']);
+
+        [$limpios] = ValidadorRegistro::cuenta(['nombre' => 'Ana', 'telefono' => '2323555555', 'organizacion' => 'Patitas'], 'CLIENTE');
+        $this->assertArrayNotHasKey('organizacion', $limpios);
+    }
+
+    public function testElNombreEsObligatorioEnMisDatos(): void
+    {
+        [, $errores] = ValidadorRegistro::cuenta(['nombre' => ' ', 'telefono' => '2323555555'], 'CLIENTE');
+        $this->assertSame('El nombre es obligatorio', $errores['nombre']);
+    }
+
+    // ---------- Cambio de contraseña ----------
+
+    public function testCambioDeContrasenaCorrecto(): void
+    {
+        [$limpios, $errores] = ValidadorRegistro::cambioDeContrasena(['actual' => 'vieja-123', 'nueva' => 'nueva-1234', 'repetir' => 'nueva-1234']);
+
+        $this->assertSame([], $errores);
+        $this->assertSame('nueva-1234', $limpios['nueva']);
+    }
+
+    public function testLaContrasenaNuevaTieneLasMismasReglasQueElRegistro(): void
+    {
+        [, $errores] = ValidadorRegistro::cambioDeContrasena(['actual' => '', 'nueva' => 'corta', 'repetir' => 'corta']);
+
+        $this->assertSame('Escribí tu contraseña actual', $errores['actual']);
+        $this->assertSame('La contraseña debe tener entre 8 y 72 caracteres', $errores['nueva']);
+    }
+
+    public function testLasDosNuevasTienenQueCoincidirYSerDistintasDeLaActual(): void
+    {
+        [, $errores] = ValidadorRegistro::cambioDeContrasena(['actual' => 'vieja-123', 'nueva' => 'nueva-1234', 'repetir' => 'nueva-12345']);
+        $this->assertSame('Las contraseñas nuevas no coinciden', $errores['repetir']);
+
+        [, $errores] = ValidadorRegistro::cambioDeContrasena(['actual' => 'misma-1234', 'nueva' => 'misma-1234', 'repetir' => 'misma-1234']);
+        $this->assertSame('La contraseña nueva tiene que ser distinta de la actual', $errores['nueva']);
+    }
 }
