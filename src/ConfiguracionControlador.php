@@ -13,6 +13,15 @@ class ConfiguracionControlador
         self::responder(new ConfiguracionRepositorio(Database::conectar()));
     }
 
+    // GET /api/configuracion/contacto — pública (sin sesión): los datos de la veterinaria (dirección,
+    // teléfono, WhatsApp, email y redes) para la portada, el pie y Contactanos.
+    public static function contacto(): void
+    {
+        $repositorio = new ConfiguracionRepositorio(Database::conectar());
+
+        Response::json(CatalogoConfiguracion::contacto($repositorio->guardados()), 200);
+    }
+
     // PUT /api/configuracion — veterinaria. {"valores": {"hora_apertura": "09:00", "dias_aviso_vacuna": 5}}
     // Se guardan todos o ninguno. Mandar el valor por defecto lo vuelve a dejar como estaba.
     public static function guardar(): void

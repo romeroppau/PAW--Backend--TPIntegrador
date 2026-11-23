@@ -16,9 +16,13 @@ class CatalogoConfiguracion
         'AVISOS' => 'Avisos a los clientes',
         'STOCK' => 'Stock y vencimientos',
         'TIENDA' => 'Tienda',
+        'CONTACTO' => 'Datos de la veterinaria',
     ];
 
     // tipo HORA: "HH:MM" (minimo y maximo también son horas). tipo ENTERO: número entero, con su unidad.
+    // tipo TEXTO: los datos de contacto. minimo y maximo son el largo; formato dice qué se valida
+    // (TEXTO libre, TELEFONO argentino, EMAIL o URL de una red social, con su dominio en 'dominios').
+    // Con minimo 0 se puede dejar vacío: la página no lo muestra.
     public const PARAMETROS = [
         'hora_apertura' => [
             'grupo' => 'TURNOS', 'nombre' => 'Apertura',
@@ -116,6 +120,56 @@ class CatalogoConfiguracion
             'tipo' => 'ENTERO', 'defecto' => 48, 'minimo' => 1, 'maximo' => 168, 'unidad' => 'horas',
             'usa' => 'Inventario',
         ],
+        // Datos de contacto: los muestran la portada, el pie, los paneles, Contactanos y el detalle de
+        // producto (Frontend, con GET /api/configuracion/contacto, que es pública).
+        'direccion' => [
+            'grupo' => 'CONTACTO', 'nombre' => 'Dirección',
+            'ayuda' => 'La dirección de la veterinaria, como la escribirías en Google Maps (se usa también para el mapa de Contactanos).',
+            'tipo' => 'TEXTO', 'formato' => 'TEXTO', 'defecto' => 'Av. San Martín 1450, Luján', 'minimo' => 5, 'maximo' => 120, 'unidad' => null,
+            'usa' => 'Frontend',
+        ],
+        'telefono' => [
+            'grupo' => 'CONTACTO', 'nombre' => 'Teléfono',
+            'ayuda' => 'El teléfono para llamar, con el código de área sin 0 y sin 15. Se muestra como lo escribas.',
+            'tipo' => 'TEXTO', 'formato' => 'TELEFONO', 'defecto' => '11 3901-0486', 'minimo' => 10, 'maximo' => 20, 'unidad' => null,
+            'usa' => 'Frontend',
+        ],
+        'whatsapp' => [
+            'grupo' => 'CONTACTO', 'nombre' => 'WhatsApp',
+            'ayuda' => 'El número al que escriben los clientes por WhatsApp, con el código de área sin 0 y sin 15.',
+            'tipo' => 'TEXTO', 'formato' => 'TELEFONO', 'defecto' => '11 3901-0486', 'minimo' => 10, 'maximo' => 20, 'unidad' => null,
+            'usa' => 'Frontend',
+        ],
+        'email_contacto' => [
+            'grupo' => 'CONTACTO', 'nombre' => 'Email de contacto',
+            'ayuda' => 'El email al que pueden escribir los clientes. Si lo dejás vacío, no se muestra.',
+            'tipo' => 'TEXTO', 'formato' => 'EMAIL', 'defecto' => '', 'minimo' => 0, 'maximo' => 150, 'unidad' => null,
+            'usa' => 'Frontend',
+        ],
+        'instagram' => [
+            'grupo' => 'CONTACTO', 'nombre' => 'Instagram',
+            'ayuda' => 'El enlace a la cuenta, por ejemplo https://www.instagram.com/huellavet. Si lo dejás vacío, no se muestra el ícono.',
+            'tipo' => 'TEXTO', 'formato' => 'URL', 'dominios' => ['instagram.com'], 'defecto' => '', 'minimo' => 0, 'maximo' => 255, 'unidad' => null,
+            'usa' => 'Frontend',
+        ],
+        'facebook' => [
+            'grupo' => 'CONTACTO', 'nombre' => 'Facebook',
+            'ayuda' => 'El enlace a la página, por ejemplo https://www.facebook.com/huellavet. Si lo dejás vacío, no se muestra el ícono.',
+            'tipo' => 'TEXTO', 'formato' => 'URL', 'dominios' => ['facebook.com', 'fb.com'], 'defecto' => '', 'minimo' => 0, 'maximo' => 255, 'unidad' => null,
+            'usa' => 'Frontend',
+        ],
+        'youtube' => [
+            'grupo' => 'CONTACTO', 'nombre' => 'YouTube',
+            'ayuda' => 'El enlace al canal, por ejemplo https://www.youtube.com/@huellavet. Si lo dejás vacío, no se muestra el ícono.',
+            'tipo' => 'TEXTO', 'formato' => 'URL', 'dominios' => ['youtube.com', 'youtu.be'], 'defecto' => '', 'minimo' => 0, 'maximo' => 255, 'unidad' => null,
+            'usa' => 'Frontend',
+        ],
+    ];
+
+    // Las claves de los datos de contacto y cómo se llaman en GET /api/configuracion/contacto.
+    private const CONTACTO = [
+        'direccion' => 'direccion', 'telefono' => 'telefono', 'whatsapp' => 'whatsapp',
+        'email_contacto' => 'email', 'instagram' => 'instagram', 'facebook' => 'facebook', 'youtube' => 'youtube',
     ];
 
     // Los parámetros con su valor actual, en el orden del catálogo, para GET /api/configuracion.
@@ -137,6 +191,7 @@ class CatalogoConfiguracion
                 'nombre' => $p['nombre'],
                 'ayuda' => $p['ayuda'],
                 'tipo' => $p['tipo'],
+                'formato' => $p['formato'] ?? null,
                 'unidad' => $p['unidad'],
                 'minimo' => $p['minimo'],
                 'maximo' => $p['maximo'],
@@ -223,10 +278,41 @@ class CatalogoConfiguracion
         return (string) self::PARAMETROS[$clave]['defecto'];
     }
 
+    // Los datos de contacto para GET /api/configuracion/contacto (pública), con los enlaces ya armados
+    // para llamar y para WhatsApp. Los vacíos van como null: la página no los muestra.
+    // $guardados: lo mismo que recibe listar().
+    public static function contacto(array $guardados): array
+    {
+        $valores = array_column(self::listar($guardados), 'valor', 'clave');
+        $datos = [];
+        foreach (self::CONTACTO as $clave => $nombre) {
+            $datos[$nombre] = $valores[$clave] === '' ? null : $valores[$clave];
+        }
+
+        $datos['enlaces'] = [
+            'telefono' => 'tel:+54' . self::digitos($datos['telefono']),
+            'whatsapp' => 'https://wa.me/549' . self::digitos($datos['whatsapp']),
+        ];
+
+        return $datos;
+    }
+
+    // Los 10 dígitos de un teléfono argentino (sin +54, sin 9, sin espacios ni guiones), o null si no lo es.
+    private static function digitos(string $telefono): ?string
+    {
+        $soloDigitos = preg_replace('/[\s\-()]/', '', $telefono);
+
+        return preg_match('/^(\+?54)?9?(\d{10})$/', $soloDigitos, $partes) === 1 ? $partes[2] : null;
+    }
+
     // El valor con su tipo (int o "HH:MM") si es válido y está en el rango; si no, null.
     // Acepta el número como entero (JSON) o como texto (lo guardado en la tabla).
     private static function interpretar(array $p, mixed $valor): int|string|null
     {
+        if ($p['tipo'] === 'TEXTO') {
+            return self::interpretarTexto($p, $valor);
+        }
+
         if ($p['tipo'] === 'HORA') {
             if (!is_string($valor) || !preg_match('/^([01]\d|2[0-3]):[0-5]\d$/', $valor)) {
                 return null;
@@ -244,8 +330,55 @@ class CatalogoConfiguracion
         return $valor >= $p['minimo'] && $valor <= $p['maximo'] ? $valor : null;
     }
 
+    // Un dato de contacto: sin espacios de más y con el formato que pide. El email, en minúsculas.
+    private static function interpretarTexto(array $p, mixed $valor): ?string
+    {
+        if (!is_string($valor)) {
+            return null;
+        }
+        $valor = trim(preg_replace('/\s+/u', ' ', $valor));
+        if ($valor === '') {
+            return $p['minimo'] === 0 ? '' : null;
+        }
+        if (mb_strlen($valor) < $p['minimo'] || mb_strlen($valor) > $p['maximo']) {
+            return null;
+        }
+
+        return match ($p['formato']) {
+            'TELEFONO' => self::digitos($valor) !== null ? $valor : null,
+            'EMAIL' => filter_var($valor, FILTER_VALIDATE_EMAIL) !== false ? strtolower($valor) : null,
+            'URL' => self::esDeLaRed($valor, $p['dominios']) ? $valor : null,
+            default => $valor,
+        };
+    }
+
+    // Que sea https y del dominio de la red (con www., m. o lo que sea adelante).
+    private static function esDeLaRed(string $url, array $dominios): bool
+    {
+        if (filter_var($url, FILTER_VALIDATE_URL) === false || parse_url($url, PHP_URL_SCHEME) !== 'https') {
+            return false;
+        }
+        $host = strtolower((string) parse_url($url, PHP_URL_HOST));
+        foreach ($dominios as $dominio) {
+            if ($host === $dominio || str_ends_with($host, '.' . $dominio)) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
     private static function mensajeDeRango(array $p): string
     {
+        if ($p['tipo'] === 'TEXTO') {
+            return match ($p['formato']) {
+                'TELEFONO' => 'El teléfono no es válido. Ejemplo: 11 3901-0486',
+                'EMAIL' => 'El email no es válido',
+                'URL' => 'Tiene que ser un enlace https de ' . $p['dominios'][0] . ', por ejemplo https://www.' . $p['dominios'][0] . '/huellavet',
+                default => "Tiene que tener entre {$p['minimo']} y {$p['maximo']} caracteres",
+            };
+        }
+
         if ($p['tipo'] === 'HORA') {
             return "Elegí una hora entre las {$p['minimo']} y las {$p['maximo']}";
         }
