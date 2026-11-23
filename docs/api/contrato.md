@@ -419,8 +419,10 @@ Los parámetros que la veterinaria cambia desde su panel (pantalla `panel/config
 
 | Clave | Tipo | Por defecto | Rango | Lo usa |
 |---|---|---|---|---|
-| `hora_apertura` | HORA | `08:00` | 06:00 a 22:00 | Pacientes (turnos) |
-| `hora_cierre` | HORA | `20:00` | 07:00 a 23:59, después de la apertura | Pacientes (turnos) |
+| `hora_apertura` | HORA | `08:00` | 00:00 a 23:58 | Pacientes (turnos): primer horario, desde |
+| `hora_cierre` | HORA | `20:00` | 00:01 a 23:59, después de la apertura | Pacientes (turnos): primer horario, hasta. De 00:00 a 23:59 es atender las 24 horas |
+| `hora_apertura_2` | HORA, opcional | vacío | 00:00 a 23:58, desde el cierre del primero | Pacientes (turnos): segundo horario, desde (horario cortado) |
+| `hora_cierre_2` | HORA, opcional | vacío | 00:01 a 23:59, después de su apertura | Pacientes (turnos): segundo horario, hasta |
 | `precio_consulta` | ENTERO | 15000 | 0 a 1.000.000 pesos | Pacientes (precio de cada turno al sacarse; la franja promocionada le aplica su descuento) |
 | `dias_aviso_vacuna` | ENTERO | 7 | 1 a 30 días | Reportes (motor) |
 | `dias_control_adopcion_1` | ENTERO | 30 | 7 a 180 días | Reportes (motor) |
@@ -441,6 +443,8 @@ Los parámetros que la veterinaria cambia desde su panel (pantalla `panel/config
 | `instagram` | TEXTO (URL) | vacío | `https://` de instagram.com, o vacío | Frontend (ícono del pie) |
 | `facebook` | TEXTO (URL) | vacío | `https://` de facebook.com o fb.com, o vacío | Frontend (ícono del pie) |
 | `youtube` | TEXTO (URL) | vacío | `https://` de youtube.com o youtu.be, o vacío | Frontend (ícono del pie) |
+
+El segundo horario es para el horario cortado (por ejemplo, de 09:00 a 13:00 y de 16:00 a 19:00): van las dos horas o ninguna (`""` lo vacía y se atiende de corrido). Un parámetro que se puede dejar vacío se reconoce porque su `defecto` es `""`.
 
 Los de la tienda valen para las compras nuevas: cada compra guarda sus plazos y su política de reintegro al confirmarse (migraciones 015 y 017 del Gateway).
 

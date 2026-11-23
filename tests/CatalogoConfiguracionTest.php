@@ -242,4 +242,52 @@ final class CatalogoConfiguracionTest extends TestCase
         $contacto = CatalogoConfiguracion::contacto(['whatsapp' => ['valor' => '+54 11 3901-0486', 'actualizado_en' => 'x', 'actualizado_por' => 'Vet']]);
         $this->assertSame('https://wa.me/5491139010486', $contacto['enlaces']['whatsapp']);
     }
+
+    public function testSeAtiendeLas24Horas(): void
+    {
+        [$limpios, $errores] = CatalogoConfiguracion::validar(['hora_apertura' => '00:00', 'hora_cierre' => '23:59'], []);
+
+        $this->assertSame([], $errores);
+        $this->assertSame(['hora_apertura' => '00:00', 'hora_cierre' => '23:59'], $limpios);
+    }
+
+    public function testHorarioCortadoEnDosFranjas(): void
+    {
+        // De 9 a 13 y de 16 a 19.
+        [$limpios, $errores] = CatalogoConfiguracion::validar(
+            ['hora_apertura' => '09:00', 'hora_cierre' => '13:00', 'hora_apertura_2' => '16:00', 'hora_cierre_2' => '19:00'],
+            []
+        );
+        $this->assertSame([], $errores);
+        $this->assertSame('16:00', $limpios['hora_apertura_2']);
+
+        // Sin cargar, la segunda franja queda vacía (de corrido, como siempre).
+        $porClave = array_column(CatalogoConfiguracion::listar([]), 'valor', 'clave');
+        $this->assertSame('', $porClave['hora_apertura_2']);
+
+        // Vaciarla vuelve a atender de corrido.
+        [$limpios, $errores] = CatalogoConfiguracion::validar(['hora_apertura_2' => '', 'hora_cierre_2' => ''], ['hora_apertura_2' => '16:00', 'hora_cierre_2' => '19:00']);
+        $this->assertSame([], $errores);
+        $this->assertSame(['hora_apertura_2' => '', 'hora_cierre_2' => ''], $limpios);
+    }
+
+    public function testLaSegundaFranjaVaCompletaYDespuesDeLaPrimera(): void
+    {
+        [, $errores] = CatalogoConfiguracion::validar(['hora_apertura_2' => '16:00'], []);
+        $this->assertSame(['hora_cierre_2'], array_keys($errores));   // falta el cierre
+
+        // El primer horario es hasta las 20 (por defecto): a las 16 todavía está abierto.
+        [, $errores] = CatalogoConfiguracion::validar(['hora_apertura_2' => '16:00', 'hora_cierre_2' => '19:00'], []);
+        $this->assertSame(['hora_apertura_2'], array_keys($errores));
+
+        [, $errores] = CatalogoConfiguracion::validar(
+            ['hora_cierre' => '13:00', 'hora_apertura_2' => '19:00', 'hora_cierre_2' => '16:00'],
+            []
+        );
+        $this->assertSame(['hora_cierre_2'], array_keys($errores));
+
+        // Alargar el primero hasta pisar el segundo guardado: el error va en el que se cambió.
+        [, $errores] = CatalogoConfiguracion::validar(['hora_cierre' => '17:00'], ['hora_cierre' => '13:00', 'hora_apertura_2' => '16:00', 'hora_cierre_2' => '19:00']);
+        $this->assertSame(['hora_cierre'], array_keys($errores));
+    }
 }
