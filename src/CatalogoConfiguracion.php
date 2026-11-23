@@ -21,7 +21,7 @@ class CatalogoConfiguracion
 
     // tipo HORA: "HH:MM" (minimo y maximo también son horas). tipo ENTERO: número entero, con su unidad.
     // tipo TEXTO: los datos de contacto. minimo y maximo son el largo; formato dice qué se valida
-    // (TEXTO libre, TELEFONO argentino, EMAIL o URL de una red social, con su dominio en 'dominios').
+    // (TEXTO libre, TELEFONO argentino o de otro país con +, EMAIL o URL de una red social, con su dominio en 'dominios').
     // Con minimo 0 se puede dejar vacío: la página no lo muestra.
     public const PARAMETROS = [
         'hora_apertura' => [
@@ -130,13 +130,13 @@ class CatalogoConfiguracion
         ],
         'telefono' => [
             'grupo' => 'CONTACTO', 'nombre' => 'Teléfono',
-            'ayuda' => 'El teléfono para llamar, con el código de área sin 0 y sin 15. Se muestra como lo escribas.',
+            'ayuda' => 'El teléfono para llamar, con el código de área sin 0 y sin 15 (de otro país: con + y su código, por ejemplo +1 555 145 9000). Se muestra como lo escribas.',
             'tipo' => 'TEXTO', 'formato' => 'TELEFONO', 'defecto' => '11 3901-0486', 'minimo' => 10, 'maximo' => 20, 'unidad' => null,
             'usa' => 'Frontend',
         ],
         'whatsapp' => [
             'grupo' => 'CONTACTO', 'nombre' => 'WhatsApp',
-            'ayuda' => 'El número al que escriben los clientes por WhatsApp, con el código de área sin 0 y sin 15.',
+            'ayuda' => 'El número al que escriben los clientes por WhatsApp, con el código de área sin 0 y sin 15 (de otro país: con + y su código, por ejemplo +1 555 145 9000).',
             'tipo' => 'TEXTO', 'formato' => 'TELEFONO', 'defecto' => '11 3901-0486', 'minimo' => 10, 'maximo' => 20, 'unidad' => null,
             'usa' => 'Frontend',
         ],
@@ -290,19 +290,31 @@ class CatalogoConfiguracion
         }
 
         $datos['enlaces'] = [
-            'telefono' => 'tel:+54' . self::digitos($datos['telefono']),
-            'whatsapp' => 'https://wa.me/549' . self::digitos($datos['whatsapp']),
+            'telefono' => 'tel:+' . self::numeroCompleto($datos['telefono'], false),
+            'whatsapp' => 'https://wa.me/' . self::numeroCompleto($datos['whatsapp'], true),
         ];
 
         return $datos;
     }
 
-    // Los 10 dígitos de un teléfono argentino (sin +54, sin 9, sin espacios ni guiones), o null si no lo es.
-    private static function digitos(string $telefono): ?string
+    // El número con el código de país y sin nada más, para los enlaces (tel:+…, wa.me/…), o null si
+    // no es un teléfono válido:
+    //   - argentino: 10 dígitos (código de área sin 0 y número sin 15), con +54 y 9 opcionales.
+    //     WhatsApp lo quiere con el 9 de los celulares (549…); para llamar va sin él (54…).
+    //   - de otro país: empieza con + y su código, de 8 a 15 dígitos en total (por ejemplo, el número
+    //     de prueba de Meta, +1 555 145 9000).
+    private static function numeroCompleto(string $telefono, bool $paraWhatsApp): ?string
     {
-        $soloDigitos = preg_replace('/[\s\-()]/', '', $telefono);
+        $soloDigitos = preg_replace('/[\s\-().]/', '', $telefono);
 
-        return preg_match('/^(\+?54)?9?(\d{10})$/', $soloDigitos, $partes) === 1 ? $partes[2] : null;
+        if (preg_match('/^(\+?54)?9?(\d{10})$/', $soloDigitos, $partes) === 1) {
+            return ($paraWhatsApp ? '549' : '54') . $partes[2];
+        }
+        if (preg_match('/^\+([1-9]\d{7,14})$/', $soloDigitos, $partes) === 1 && !str_starts_with($partes[1], '54')) {
+            return $partes[1];
+        }
+
+        return null;
     }
 
     // El valor con su tipo (int o "HH:MM") si es válido y está en el rango; si no, null.
@@ -345,7 +357,7 @@ class CatalogoConfiguracion
         }
 
         return match ($p['formato']) {
-            'TELEFONO' => self::digitos($valor) !== null ? $valor : null,
+            'TELEFONO' => self::numeroCompleto($valor, true) !== null ? $valor : null,
             'EMAIL' => filter_var($valor, FILTER_VALIDATE_EMAIL) !== false ? strtolower($valor) : null,
             'URL' => self::esDeLaRed($valor, $p['dominios']) ? $valor : null,
             default => $valor,
@@ -372,7 +384,7 @@ class CatalogoConfiguracion
     {
         if ($p['tipo'] === 'TEXTO') {
             return match ($p['formato']) {
-                'TELEFONO' => 'El teléfono no es válido. Ejemplo: 11 3901-0486',
+                'TELEFONO' => 'El teléfono no es válido. Ejemplo: 11 3901-0486 (de otro país, con + y su código: +1 555 145 9000)',
                 'EMAIL' => 'El email no es válido',
                 'URL' => 'Tiene que ser un enlace https de ' . $p['dominios'][0] . ', por ejemplo https://www.' . $p['dominios'][0] . '/huellavet',
                 default => "Tiene que tener entre {$p['minimo']} y {$p['maximo']} caracteres",
