@@ -212,6 +212,12 @@ class UsuarioRepositorio
     }
 
     // Guarda la contraseña nueva (ya hasheada: nunca la contraseña en limpio).
+    // El teléfono nuevo, ya verificado por WhatsApp (VerificacionControlador::confirmarCambio).
+    public function cambiarTelefono(int $id, string $telefono): void
+    {
+        $this->db->prepare('UPDATE usuario SET telefono = ? WHERE id = ?')->execute([$telefono, $id]);
+    }
+
     public function actualizarPassword(int $id, string $passwordHash): void
     {
         $this->db->prepare('UPDATE usuario SET password_hash = ? WHERE id = ?')->execute([$passwordHash, $id]);

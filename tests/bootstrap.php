@@ -34,3 +34,4 @@ require_once __DIR__ . '/../src/RescatistaControlador.php';
 
 require_once __DIR__ . '/../src/CatalogoConfiguracion.php';
 require_once __DIR__ . '/../src/WhatsAppCliente.php';
+require_once __DIR__ . '/../src/VerificacionWhatsApp.php';

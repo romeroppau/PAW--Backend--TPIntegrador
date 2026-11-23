@@ -1,7 +1,8 @@
 <?php
 
 // "Mis datos" (Entrega 5): cada usuario (cliente, rescatista o veterinaria) ve los datos de su cuenta,
-// cambia su nombre y su teléfono (el rescatista también su organización) y cambia su contraseña.
+// cambia su nombre (el rescatista también su organización) y cambia su contraseña. El teléfono se
+// cambia aparte, verificando el número nuevo por WhatsApp (VerificacionControlador).
 // El email no se cambia: es el usuario para entrar. El usuario sale siempre del JWT: nadie puede
 // cambiar los datos de otro. Contrato: docs/api/contrato.md, sección "Mis datos".
 class CuentaControlador
@@ -20,7 +21,7 @@ class CuentaControlador
         Response::json($cuenta, 200);
     }
 
-    // PUT /api/cuenta   { "nombre": "...", "telefono": "...", "organizacion": "..." }
+    // PUT /api/cuenta   { "nombre": "...", "organizacion": "..." }   (el teléfono, si viene, se ignora)
     public static function guardar(): void
     {
         $sesion = Auth::requerirRol([]);
@@ -33,11 +34,16 @@ class CuentaControlador
         }
 
         $usuarios = self::repositorio();
+        $actual = $usuarios->cuenta((int) $sesion['id']);
+        if ($actual === null) {
+            Response::error('No autenticado', 401);
+            return;
+        }
         $esRescatista = $sesion['rol'] === 'RESCATISTA';
         $usuarios->actualizarDatos(
             (int) $sesion['id'],
             $limpios['nombre'],
-            $limpios['telefono'],
+            $actual['telefono'],   // no cambia: solo con la verificación del WhatsApp
             $esRescatista ? $limpios['organizacion'] : null,
             $esRescatista
         );

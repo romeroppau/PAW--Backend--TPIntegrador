@@ -203,32 +203,27 @@ final class ValidadorRegistroTest extends TestCase
 
     // ---------- Mis datos ----------
 
-    public function testMisDatosDeUnClienteNormalizaElTelefonoEIgnoraElEmail(): void
+    // El teléfono no se cambia con "Guardar": se cambia aparte, verificando el número nuevo por
+    // WhatsApp (VerificacionControlador). Si viene, se ignora, igual que el email.
+    public function testMisDatosIgnoraElEmailYElTelefono(): void
     {
         [$limpios, $errores] = ValidadorRegistro::cuenta(
-            ['nombre' => '  Ana Pérez ', 'telefono' => '+54 9 2323 55-5555', 'email' => 'otro@ejemplo.com'],
+            ['nombre' => '  Ana Pérez ', 'telefono' => '123', 'email' => 'otro@ejemplo.com'],
             'CLIENTE'
         );
 
         $this->assertSame([], $errores);
-        $this->assertSame(['nombre' => 'Ana Pérez', 'telefono' => '2323555555'], $limpios);
+        $this->assertSame(['nombre' => 'Ana Pérez'], $limpios);
     }
 
-    public function testElClienteYElRescatistaNoPuedenDejarElTelefonoVacio(): void
+    // El teléfono suelto (para pedir el código de verificación): las mismas reglas que el registro.
+    public function testUnTelefonoSueltoTieneLasMismasReglasQueElRegistro(): void
     {
-        [, $errores] = ValidadorRegistro::cuenta(['nombre' => 'Ana', 'telefono' => ''], 'CLIENTE');
-        $this->assertSame('El teléfono es obligatorio', $errores['telefono']);
-
-        [, $errores] = ValidadorRegistro::cuenta(['nombre' => 'Ana', 'telefono' => '123'], 'RESCATISTA');
-        $this->assertSame('El teléfono no es válido. Ejemplo: 2323 555555', $errores['telefono']);
-    }
-
-    public function testLaVeterinariaPuedeDejarElTelefonoVacio(): void
-    {
-        [$limpios, $errores] = ValidadorRegistro::cuenta(['nombre' => 'Vet', 'telefono' => ''], 'VETERINARIO');
-
-        $this->assertSame([], $errores);
-        $this->assertNull($limpios['telefono']);
+        $this->assertSame(['2323555555', null], ValidadorRegistro::telefono('+54 9 2323 55-5555'));
+        $this->assertSame([null, 'El teléfono es obligatorio'], ValidadorRegistro::telefono(''));
+        $this->assertSame([null, 'El teléfono no es válido. Ejemplo: 2323 555555'], ValidadorRegistro::telefono('123'));
+        // Algo que no es texto (una lista) cuenta como vacío.
+        $this->assertSame([null, 'El teléfono es obligatorio'], ValidadorRegistro::telefono(['2323555555']));
     }
 
     public function testSoloElRescatistaCambiaLaOrganizacion(): void
