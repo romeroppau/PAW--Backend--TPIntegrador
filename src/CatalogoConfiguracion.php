@@ -24,16 +24,31 @@ class CatalogoConfiguracion
     // (TEXTO libre, TELEFONO argentino o de otro país con +, EMAIL o URL de una red social, con su dominio en 'dominios').
     // Con minimo 0 se puede dejar vacío: la página no lo muestra.
     public const PARAMETROS = [
+        // El horario de atención: una franja, y una segunda opcional para el horario cortado (por
+        // ejemplo, de 09:00 a 13:00 y de 16:00 a 19:00). Cualquier hora del día: de 00:00 a 23:59 es
+        // atender las 24 horas.
         'hora_apertura' => [
-            'grupo' => 'TURNOS', 'nombre' => 'Apertura',
+            'grupo' => 'TURNOS', 'nombre' => 'Primer horario: desde',
             'ayuda' => 'Desde qué hora se pueden dar turnos.',
-            'tipo' => 'HORA', 'defecto' => '08:00', 'minimo' => '06:00', 'maximo' => '22:00', 'unidad' => null,
+            'tipo' => 'HORA', 'defecto' => '08:00', 'minimo' => '00:00', 'maximo' => '23:58', 'unidad' => null,
             'usa' => 'Pacientes',
         ],
         'hora_cierre' => [
-            'grupo' => 'TURNOS', 'nombre' => 'Cierre',
-            'ayuda' => 'El último turno tiene que empezar antes de esta hora.',
-            'tipo' => 'HORA', 'defecto' => '20:00', 'minimo' => '07:00', 'maximo' => '23:59', 'unidad' => null,
+            'grupo' => 'TURNOS', 'nombre' => 'Primer horario: hasta',
+            'ayuda' => 'El último turno de este horario tiene que empezar antes de esta hora. Para atender todo el día: de 00:00 a 23:59.',
+            'tipo' => 'HORA', 'defecto' => '20:00', 'minimo' => '00:01', 'maximo' => '23:59', 'unidad' => null,
+            'usa' => 'Pacientes',
+        ],
+        'hora_apertura_2' => [
+            'grupo' => 'TURNOS', 'nombre' => 'Segundo horario: desde',
+            'ayuda' => 'Para el horario cortado (por ejemplo, de 16:00 si el primero es hasta las 13:00). Tiene que ser después del primero. Si lo dejás vacío, se atiende de corrido.',
+            'tipo' => 'HORA', 'opcional' => true, 'defecto' => '', 'minimo' => '00:00', 'maximo' => '23:58', 'unidad' => null,
+            'usa' => 'Pacientes',
+        ],
+        'hora_cierre_2' => [
+            'grupo' => 'TURNOS', 'nombre' => 'Segundo horario: hasta',
+            'ayuda' => 'El último turno del segundo horario tiene que empezar antes de esta hora. Va junto con "Segundo horario: desde".',
+            'tipo' => 'HORA', 'opcional' => true, 'defecto' => '', 'minimo' => '00:01', 'maximo' => '23:59', 'unidad' => null,
             'usa' => 'Pacientes',
         ],
         // Lo usa Pacientes: cada turno guarda el precio base al sacarse (migración 020), con el
@@ -251,6 +266,20 @@ class CatalogoConfiguracion
             $campo = isset($limpios['hora_cierre']) || !isset($limpios['hora_apertura']) ? 'hora_cierre' : 'hora_apertura';
             $errores[$campo] = 'El cierre tiene que ser después de la apertura';
         }
+        // La segunda franja: las dos horas o ninguna, después de la primera y con el cierre después
+        // de su apertura.
+        $apertura2 = $final['hora_apertura_2'];
+        $cierre2 = $final['hora_cierre_2'];
+        $cambioLaSegunda = isset($limpios['hora_apertura_2']) || isset($limpios['hora_cierre_2']);
+        if (($apertura2 === '') !== ($cierre2 === '')) {
+            $campo = $apertura2 === '' ? 'hora_apertura_2' : 'hora_cierre_2';
+            $errores[$campo] = 'Completá las dos horas del segundo horario, o dejá las dos vacías';
+        } elseif ($apertura2 !== '' && $apertura2 < $final['hora_cierre']) {
+            $campo = $cambioLaSegunda || !isset($limpios['hora_cierre']) ? 'hora_apertura_2' : 'hora_cierre';
+            $errores[$campo] = 'El segundo horario tiene que empezar después de que termina el primero';
+        } elseif ($apertura2 !== '' && $apertura2 >= $cierre2) {
+            $errores['hora_cierre_2'] = 'El cierre tiene que ser después de la apertura';
+        }
         // El primer recordatorio tiene que salir antes que el último (que es el día hábil anterior al
         // último día para retirar): al menos 2 días antes del final del plazo.
         if ((int) $final['dia_primer_recordatorio'] > (int) $final['dias_habiles_para_retirar'] - 2) {
@@ -326,6 +355,9 @@ class CatalogoConfiguracion
         }
 
         if ($p['tipo'] === 'HORA') {
+            if (($p['opcional'] ?? false) && $valor === '') {
+                return '';   // la segunda franja, sin cargar
+            }
             if (!is_string($valor) || !preg_match('/^([01]\d|2[0-3]):[0-5]\d$/', $valor)) {
                 return null;
             }
