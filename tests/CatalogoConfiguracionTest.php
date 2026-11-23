@@ -159,4 +159,63 @@ final class CatalogoConfiguracionTest extends TestCase
         [, $errores] = CatalogoConfiguracion::validar(['precio_consulta' => '15000.50'], []);
         $this->assertArrayHasKey('precio_consulta', $errores);
     }
+
+    public function testLosDatosDeContactoTienenSusValoresPorDefecto(): void
+    {
+        $contacto = CatalogoConfiguracion::contacto([]);
+
+        $this->assertSame('Av. San Martín 1450, Luján', $contacto['direccion']);
+        $this->assertSame('11 3901-0486', $contacto['telefono']);
+        $this->assertNull($contacto['email']);
+        $this->assertNull($contacto['instagram']);   // sin cargar: la página no muestra el ícono
+        $this->assertSame(['telefono' => 'tel:+541139010486', 'whatsapp' => 'https://wa.me/5491139010486'], $contacto['enlaces']);
+    }
+
+    public function testLoGuardadoDeContactoSeUsaYArmaLosEnlaces(): void
+    {
+        $guardado = fn ($valor) => ['valor' => $valor, 'actualizado_en' => '2026-11-23 10:00:00', 'actualizado_por' => 'Vet'];
+        $contacto = CatalogoConfiguracion::contacto([
+            'whatsapp' => $guardado('+54 9 2323 555-555'),
+            'instagram' => $guardado('https://www.instagram.com/huellavet'),
+        ]);
+
+        $this->assertSame('+54 9 2323 555-555', $contacto['whatsapp']);   // se muestra como se escribió
+        $this->assertSame('https://wa.me/5492323555555', $contacto['enlaces']['whatsapp']);
+        $this->assertSame('https://www.instagram.com/huellavet', $contacto['instagram']);
+    }
+
+    public function testLosDatosDeContactoValidos(): void
+    {
+        [$limpios, $errores] = CatalogoConfiguracion::validar([
+            'direccion' => '  Calle   Falsa 123, Luján ',
+            'telefono' => '(2323) 42-1234',
+            'email_contacto' => 'Hola@HuellaVet.com.ar',
+            'facebook' => 'https://m.facebook.com/huellavet',
+            'youtube' => '',
+        ], []);
+
+        $this->assertSame([], $errores);
+        $this->assertSame('Calle Falsa 123, Luján', $limpios['direccion']);
+        $this->assertSame('(2323) 42-1234', $limpios['telefono']);
+        $this->assertSame('hola@huellavet.com.ar', $limpios['email_contacto']);
+        $this->assertSame('https://m.facebook.com/huellavet', $limpios['facebook']);
+        $this->assertSame('', $limpios['youtube']);   // vacío vale: es el valor por defecto
+    }
+
+    public function testCadaDatoDeContactoMalTieneSuError(): void
+    {
+        [, $errores] = CatalogoConfiguracion::validar([
+            'direccion' => '',
+            'telefono' => '123',
+            'whatsapp' => 1139010486,
+            'email_contacto' => 'no-es-un-email',
+            'instagram' => 'https://www.facebook.com/huellavet',
+            'facebook' => 'http://www.facebook.com/huellavet',
+            'youtube' => 'https://youtube.com.otro.com/x',
+        ], []);
+
+        $this->assertSame(['direccion', 'telefono', 'whatsapp', 'email_contacto', 'instagram', 'facebook', 'youtube'], array_keys($errores));
+        $this->assertSame('El teléfono no es válido. Ejemplo: 11 3901-0486', $errores['telefono']);
+        $this->assertStringContainsString('instagram.com', $errores['instagram']);
+    }
 }

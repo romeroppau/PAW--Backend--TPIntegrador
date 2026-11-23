@@ -189,6 +189,12 @@ $router->get(
     [ConfiguracionControlador::class, 'ver']
 );
 
+// Los datos de contacto de la veterinaria: pública, la lee el pie de todas las páginas.
+$router->get(
+    '/api/configuracion/contacto',
+    [ConfiguracionControlador::class, 'contacto']
+);
+
 $router->put(
     '/api/configuracion',
     [ConfiguracionControlador::class, 'guardar']

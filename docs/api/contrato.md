@@ -434,10 +434,19 @@ Los parámetros que la veterinaria cambia desde su panel (pantalla `panel/config
 | `porcentaje_reintegro_anticipado` | ENTERO | 75 | 0 a 100 % | Inventario (tienda: reintegro si el comprador cancela con anticipación) |
 | `porcentaje_reintegro_ultimo_momento` | ENTERO | 50 | 0 a 100 %, no mayor que el anterior | Inventario (tienda: reintegro si cancela a último momento) |
 | `horas_anticipacion_reintegro` | ENTERO | 48 | 1 a 168 horas | Inventario (tienda: qué es "con anticipación") |
+| `direccion` | TEXTO | `Av. San Martín 1450, Luján` | 5 a 120 caracteres | Frontend (portada, pie, paneles, Contactanos y su mapa) |
+| `telefono` | TEXTO (TELEFONO) | `11 3901-0486` | teléfono argentino (10 dígitos, con +54 y 9 opcionales) | Frontend (para llamar) |
+| `whatsapp` | TEXTO (TELEFONO) | `11 3901-0486` | ídem | Frontend (enlaces a WhatsApp) |
+| `email_contacto` | TEXTO (EMAIL) | vacío | email válido o vacío | Frontend |
+| `instagram` | TEXTO (URL) | vacío | `https://` de instagram.com, o vacío | Frontend (ícono del pie) |
+| `facebook` | TEXTO (URL) | vacío | `https://` de facebook.com o fb.com, o vacío | Frontend (ícono del pie) |
+| `youtube` | TEXTO (URL) | vacío | `https://` de youtube.com o youtu.be, o vacío | Frontend (ícono del pie) |
 
 Los de la tienda valen para las compras nuevas: cada compra guarda sus plazos y su política de reintegro al confirmarse (migraciones 015 y 017 del Gateway).
 
-Las dos rutas exigen sesión de veterinario (sin sesión, `401`; otro rol, `403`). El PUT exige además `X-CSRF-Token`.
+Los datos de contacto (grupo `CONTACTO`, "Datos de la veterinaria") son de tipo `TEXTO`: `minimo` y `maximo` son el largo y `formato` dice qué se valida (`TEXTO`, `TELEFONO`, `EMAIL` o `URL`). El teléfono se guarda como se escribió (se muestra así), y se valida que tenga los 10 dígitos. Los que pueden quedar vacíos (`minimo` 0) no se muestran en las páginas.
+
+GET y PUT `/api/configuracion` exigen sesión de veterinario (sin sesión, `401`; otro rol, `403`). El PUT exige además `X-CSRF-Token`.
 
 ### GET /api/configuracion
 
@@ -447,9 +456,9 @@ Las dos rutas exigen sesión de veterinario (sin sesión, `401`; otro rol, `403`
 {
   "clave": "hora_apertura", "grupo": "TURNOS", "nombre_grupo": "Turnos",
   "nombre": "Apertura", "ayuda": "Desde qué hora se pueden dar turnos.",
-  "tipo": "HORA", "unidad": null, "minimo": "06:00", "maximo": "22:00",
+  "tipo": "HORA", "formato": null, "unidad": null, "minimo": "06:00", "maximo": "22:00",
   "defecto": "08:00", "valor": "09:00", "modificado": true,
-  "actualizado_en": "2026-11-20 10:15:00", "actualizado_por": "Veterinaria de Prueba"
+  "actualizado_en": "2026-11-20 10:15:00", "actualizado_por": "Dra. Laura Martínez"
 }
 ```
 
@@ -467,5 +476,26 @@ Solo los que cambian. Se guardan todos o ninguno. Mandar el valor por defecto vu
 - `400`: `{ "error": "Revisá los valores marcados", "campos": { "hora_cierre": "El cierre tiene que ser después de la apertura" } }`. Una clave que no existe, un valor de otro tipo o fuera de rango, la apertura después del cierre o el segundo control antes del primero (el error va en el campo que se cambió). Sin `valores`: el error va en `campos.valores`.
 
 Cada cambio queda en el log: qué veterinaria y qué claves.
+
+### GET /api/configuracion/contacto
+
+Pública (sin sesión): la usan la portada, el pie de todas las páginas, los paneles, Contactanos y el detalle de producto.
+
+- `200`:
+
+```json
+{
+  "direccion": "Av. San Martín 1450, Luján",
+  "telefono": "11 3901-0486",
+  "whatsapp": "11 3901-0486",
+  "email": null,
+  "instagram": "https://www.instagram.com/huellavet",
+  "facebook": null,
+  "youtube": null,
+  "enlaces": { "telefono": "tel:+541139010486", "whatsapp": "https://wa.me/5491139010486" }
+}
+```
+
+Lo que no está cargado va como `null` (la página no lo muestra). `enlaces` ya trae armado el enlace para llamar y el de WhatsApp.
 
 ---
