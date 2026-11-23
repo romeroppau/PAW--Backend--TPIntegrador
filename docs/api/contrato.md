@@ -435,7 +435,7 @@ Los parámetros que la veterinaria cambia desde su panel (pantalla `panel/config
 | `porcentaje_reintegro_ultimo_momento` | ENTERO | 50 | 0 a 100 %, no mayor que el anterior | Inventario (tienda: reintegro si cancela a último momento) |
 | `horas_anticipacion_reintegro` | ENTERO | 48 | 1 a 168 horas | Inventario (tienda: qué es "con anticipación") |
 | `direccion` | TEXTO | `Av. San Martín 1450, Luján` | 5 a 120 caracteres | Frontend (portada, pie, paneles, Contactanos y su mapa) |
-| `telefono` | TEXTO (TELEFONO) | `11 3901-0486` | teléfono argentino (10 dígitos, con +54 y 9 opcionales) | Frontend (para llamar) |
+| `telefono` | TEXTO (TELEFONO) | `11 3901-0486` | teléfono argentino (10 dígitos, con +54 y 9 opcionales) o de otro país con `+` y su código (8 a 15 dígitos, por ejemplo `+1 555 145 9000`) | Frontend (para llamar) |
 | `whatsapp` | TEXTO (TELEFONO) | `11 3901-0486` | ídem | Frontend (enlaces a WhatsApp) |
 | `email_contacto` | TEXTO (EMAIL) | vacío | email válido o vacío | Frontend |
 | `instagram` | TEXTO (URL) | vacío | `https://` de instagram.com, o vacío | Frontend (ícono del pie) |
@@ -444,7 +444,7 @@ Los parámetros que la veterinaria cambia desde su panel (pantalla `panel/config
 
 Los de la tienda valen para las compras nuevas: cada compra guarda sus plazos y su política de reintegro al confirmarse (migraciones 015 y 017 del Gateway).
 
-Los datos de contacto (grupo `CONTACTO`, "Datos de la veterinaria") son de tipo `TEXTO`: `minimo` y `maximo` son el largo y `formato` dice qué se valida (`TEXTO`, `TELEFONO`, `EMAIL` o `URL`). El teléfono se guarda como se escribió (se muestra así), y se valida que tenga los 10 dígitos. Los que pueden quedar vacíos (`minimo` 0) no se muestran en las páginas.
+Los datos de contacto (grupo `CONTACTO`, "Datos de la veterinaria") son de tipo `TEXTO`: `minimo` y `maximo` son el largo y `formato` dice qué se valida (`TEXTO`, `TELEFONO`, `EMAIL` o `URL`). El teléfono se guarda como se escribió (se muestra así). Si es argentino, el enlace de WhatsApp le agrega el 9 de los celulares (`wa.me/549…`); si es de otro país (empieza con `+`), va tal cual (`wa.me/15551459000`). Los que pueden quedar vacíos (`minimo` 0) no se muestran en las páginas.
 
 GET y PUT `/api/configuracion` exigen sesión de veterinario (sin sesión, `401`; otro rol, `403`). El PUT exige además `X-CSRF-Token`.
 

@@ -215,7 +215,31 @@ final class CatalogoConfiguracionTest extends TestCase
         ], []);
 
         $this->assertSame(['direccion', 'telefono', 'whatsapp', 'email_contacto', 'instagram', 'facebook', 'youtube'], array_keys($errores));
-        $this->assertSame('El teléfono no es válido. Ejemplo: 11 3901-0486', $errores['telefono']);
+        $this->assertStringStartsWith('El teléfono no es válido. Ejemplo: 11 3901-0486', $errores['telefono']);
         $this->assertStringContainsString('instagram.com', $errores['instagram']);
+    }
+
+    public function testElWhatsAppPuedeSerDeOtroPaisConSuCodigo(): void
+    {
+        // El número de prueba de Meta: de EE. UU., con + y el 1.
+        [$limpios, $errores] = CatalogoConfiguracion::validar(['whatsapp' => '+1 (555) 145-9000', 'telefono' => '+1 555 145 9000'], []);
+        $this->assertSame([], $errores);
+        $this->assertSame('+1 (555) 145-9000', $limpios['whatsapp']);   // se muestra como se escribió
+
+        $guardado = fn ($valor) => ['valor' => $valor, 'actualizado_en' => '2026-11-23 10:00:00', 'actualizado_por' => 'Vet'];
+        $contacto = CatalogoConfiguracion::contacto(['whatsapp' => $guardado('+1 (555) 145-9000'), 'telefono' => $guardado('+1 555 145 9000')]);
+        $this->assertSame('https://wa.me/15551459000', $contacto['enlaces']['whatsapp']);
+        $this->assertSame('tel:+15551459000', $contacto['enlaces']['telefono']);
+    }
+
+    public function testUnNumeroDeOtroPaisTieneQueTenerElMasYUnLargoPosible(): void
+    {
+        foreach (['15551459000', '+1 555', '+0 555 145 9000', '+1 555 145 9000 1234 56'] as $malo) {
+            [, $errores] = CatalogoConfiguracion::validar(['whatsapp' => $malo], []);
+            $this->assertArrayHasKey('whatsapp', $errores, $malo);
+        }
+        // Argentino con +54 sigue siendo argentino: WhatsApp le agrega el 9.
+        $contacto = CatalogoConfiguracion::contacto(['whatsapp' => ['valor' => '+54 11 3901-0486', 'actualizado_en' => 'x', 'actualizado_por' => 'Vet']]);
+        $this->assertSame('https://wa.me/5491139010486', $contacto['enlaces']['whatsapp']);
     }
 }
