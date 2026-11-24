@@ -86,6 +86,51 @@ class UsuarioRepositorio
         return (int) $this->db->lastInsertId();
     }
 
+    // ---------- Validación de rescatistas (Entrega 5) ----------
+
+    // Los rescatistas en ese estado (o todos, con null), los más viejos primero. Hasta 100.
+    public function listarRescatistas(?string $estado): array
+    {
+        $sql = "SELECT id, nombre, email, password_hash, telefono, rol, organizacion, estado_validacion
+                FROM usuario WHERE rol = 'RESCATISTA'";
+        $valores = [];
+
+        if ($estado !== null) {
+            $sql .= ' AND estado_validacion = ?';
+            $valores[] = $estado;
+        }
+
+        $consulta = $this->db->prepare($sql . ' ORDER BY id LIMIT 100');
+        $consulta->execute($valores);
+
+        return array_map(fn (array $fila) => $this->crearDesdeFila($fila), $consulta->fetchAll());
+    }
+
+    // Aprueba o rechaza a un rescatista PENDIENTE. Devuelve:
+    //   'OK'          si se cambió el estado;
+    //   'NO_EXISTE'   si no hay un rescatista con ese id;
+    //   'YA_VALIDADO' si ya estaba aprobado o rechazado (no se cambia: la decisión es una sola).
+    // La condición "sigue PENDIENTE" va en el mismo UPDATE: si dos veterinarios validan a la vez,
+    // solo uno cambia la fila y el otro recibe YA_VALIDADO.
+    public function validarRescatista(int $id, string $estado): string
+    {
+        if (!in_array($estado, ['APROBADO', 'RECHAZADO'], true)) {
+            throw new InvalidArgumentException("Estado de validación inválido: $estado");
+        }
+
+        $consulta = $this->db->prepare(
+            "UPDATE usuario SET estado_validacion = ?
+             WHERE id = ? AND rol = 'RESCATISTA' AND estado_validacion = 'PENDIENTE'"
+        );
+        $consulta->execute([$estado, $id]);
+
+        if ($consulta->rowCount() === 1) {
+            return 'OK';
+        }
+
+        return $this->buscarPorId($id) instanceof Rescatista ? 'YA_VALIDADO' : 'NO_EXISTE';
+    }
+
     // ---------- Bloqueo por intentos fallidos ----------
     // Regla (SEGURIDAD.md): 5 intentos fallidos en 15 minutos, contados desde el primer fallo,
     // bloquean la cuenta 15 minutos. Un login correcto reinicia el contador.
@@ -136,6 +181,81 @@ class UsuarioRepositorio
              WHERE id = ?'
         );
         $consulta->execute([$id]);
+    }
+
+    // ---------- Mis datos y clientes ----------
+
+    // Los datos de una cuenta para mostrar (nunca el hash de la contraseña), o null si no existe.
+    // Los usan "Mis datos" (la propia cuenta) y la ficha del cliente que ve la veterinaria.
+    public function cuenta(int $id): ?array
+    {
+        $consulta = $this->db->prepare(
+            'SELECT id, nombre, email, telefono, rol, organizacion FROM usuario WHERE id = ?'
+        );
+        $consulta->execute([$id]);
+        $fila = $consulta->fetch();
+
+        return $fila === false ? null : self::datosDeCuenta($fila);
+    }
+
+    // Guarda lo que cada uno puede cambiar de su cuenta. La organización solo se toca si
+    // $conOrganizacion (rescatista); el email y el rol no se cambian nunca desde acá.
+    public function actualizarDatos(int $id, string $nombre, ?string $telefono, ?string $organizacion, bool $conOrganizacion): void
+    {
+        if ($conOrganizacion) {
+            $this->db->prepare('UPDATE usuario SET nombre = ?, telefono = ?, organizacion = ? WHERE id = ?')
+                ->execute([$nombre, $telefono, $organizacion, $id]);
+        } else {
+            $this->db->prepare('UPDATE usuario SET nombre = ?, telefono = ? WHERE id = ?')
+                ->execute([$nombre, $telefono, $id]);
+        }
+    }
+
+    // Guarda la contraseña nueva (ya hasheada: nunca la contraseña en limpio).
+    // El teléfono nuevo, ya verificado por WhatsApp (VerificacionControlador::confirmarCambio).
+    public function cambiarTelefono(int $id, string $telefono): void
+    {
+        $this->db->prepare('UPDATE usuario SET telefono = ? WHERE id = ?')->execute([$telefono, $id]);
+    }
+
+    public function actualizarPassword(int $id, string $passwordHash): void
+    {
+        $this->db->prepare('UPDATE usuario SET password_hash = ? WHERE id = ?')->execute([$passwordHash, $id]);
+    }
+
+    // Los clientes (rol CLIENTE) para la veterinaria, por nombre, de a $porPagina. Con $buscar, los que
+    // coinciden por nombre, email o teléfono (cualquier parte). Devuelve [clientes, hayMas].
+    public function listarClientes(string $buscar, int $pagina, int $porPagina): array
+    {
+        $sql = "SELECT id, nombre, email, telefono, rol, organizacion FROM usuario WHERE rol = 'CLIENTE'";
+        $valores = [];
+
+        if ($buscar !== '') {
+            // Se escapan % y _ para que se busquen como letras, no como comodines.
+            $patron = '%' . addcslashes($buscar, '%_\\') . '%';
+            $sql .= ' AND (nombre LIKE ? OR email LIKE ? OR telefono LIKE ?)';
+            array_push($valores, $patron, $patron, $patron);
+        }
+
+        $sql .= ' ORDER BY nombre, id LIMIT ' . ($porPagina + 1) . ' OFFSET ' . (($pagina - 1) * $porPagina);
+        $consulta = $this->db->prepare($sql);
+        $consulta->execute($valores);
+        $filas = array_map([self::class, 'datosDeCuenta'], $consulta->fetchAll());
+
+        return [array_slice($filas, 0, $porPagina), count($filas) > $porPagina];
+    }
+
+    // Una fila como la ven "Mis datos" y la veterinaria. La organización, solo la del rescatista.
+    private static function datosDeCuenta(array $fila): array
+    {
+        return [
+            'id' => (int) $fila['id'],
+            'nombre' => $fila['nombre'],
+            'email' => $fila['email'],
+            'telefono' => $fila['telefono'] === null || $fila['telefono'] === '' ? null : $fila['telefono'],
+            'rol' => $fila['rol'],
+            'organizacion' => $fila['rol'] === 'RESCATISTA' ? $fila['organizacion'] : null,
+        ];
     }
 
     // Convierte una fila de la tabla en el objeto que corresponde según la columna rol.

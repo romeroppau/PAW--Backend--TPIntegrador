@@ -1,7 +1,7 @@
 <?php
 
 // Un rescatista: publica animales en adopción (clase Rescatista del UML).
-// Se registra en estado PENDIENTE y el veterinario lo aprueba o lo rechaza (eso es de la Entrega 5).
+// Se registra en estado PENDIENTE y el veterinario lo aprueba o lo rechaza (RescatistaControlador).
 // Puede iniciar sesión en cualquier estado, pero solo publica si está APROBADO.
 class Rescatista
 {

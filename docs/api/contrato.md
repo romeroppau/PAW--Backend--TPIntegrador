@@ -10,11 +10,22 @@ Las reglas generales que valen para todos los modulos (formato JSON,formato de e
 
 | Método y ruta | Quién | Para qué |
 |---|---|---|
-| `POST /api/auth/registro/cliente` | Público | Crear una cuenta de cliente. Deja la sesión iniciada |
+| `POST /api/auth/registro/codigo` | Público | Mandar por WhatsApp el código para registrarse (Entrega 5) |
+| `POST /api/auth/registro/cliente` | Público | Crear una cuenta de cliente, con el código del WhatsApp. Deja la sesión iniciada |
 | `POST /api/auth/registro/rescatista` | Público | Crear una cuenta de rescatista en estado `PENDIENTE`. Deja la sesión iniciada |
 | `POST /api/auth/login` | Público | Iniciar sesión |
 | `POST /api/auth/logout` | Con sesión | Cerrar sesión |
 | `GET /api/auth/yo` | Con sesión | Datos del usuario actual, su rol y su token CSRF |
+| `GET /api/rescatistas` | Veterinario | Rescatistas por estado de validación (Entrega 5) |
+| `POST /api/rescatistas/{id}/aprobar` | Veterinario | Aprobar a un rescatista pendiente: desde ahí puede publicar en adopciones |
+| `POST /api/rescatistas/{id}/rechazar` | Veterinario | Rechazar a un rescatista pendiente |
+| `GET /api/cuenta` | Con sesión | Mis datos: los datos de la propia cuenta (Entrega 5) |
+| `PUT /api/cuenta` | Con sesión | Cambiar el nombre (y la organización, el rescatista) |
+| `POST /api/cuenta/telefono/codigo` | Con sesión | Mandar por WhatsApp el código al número nuevo (Entrega 5) |
+| `POST /api/cuenta/telefono` | Con sesión | Confirmar el código: recién ahí cambia el teléfono |
+| `PUT /api/cuenta/contrasena` | Con sesión | Cambiar la contraseña, con la actual |
+| `GET /api/clientes` | Veterinario | Lista de clientes, con buscador, de a 20 (Entrega 5) |
+| `GET /api/clientes/{id}` | Veterinario | Ficha de un cliente (o de un rescatista, dueño de mascotas) |
 
 El veterinario no tiene endpoint de registro: se crea con el script `scripts/crear_veterinario.php`.
 
@@ -48,9 +59,12 @@ El login, los dos registros y `GET /api/auth/yo` devuelven siempre el mismo obje
   "nombre": "Ana Pérez",
   "email": "ana@mail.com",
   "rol": "CLIENTE",
+  "estado_validacion": null,
   "csrf": "9f2c4e...a71b"
 }
 ```
+
+`estado_validacion` (Entrega 5): para un rescatista, `PENDIENTE`, `APROBADO` o `RECHAZADO`; para los demás roles, `null`. Se lee de la base cada vez, así que en `/yo` se ve el cambio en cuanto el veterinario lo aprueba, sin volver a iniciar sesión. El JWT no lo lleva.
 
 Nunca se devuelve el hash de la contraseña ni otros campos internos.
 
@@ -86,11 +100,12 @@ Crea una cuenta con rol `CLIENTE` y deja la sesión iniciada.
   "nombre": "Ana Pérez",
   "email": "ana@mail.com",
   "password": "unaClave123",
-  "telefono": "2323 555555"
+  "telefono": "2323 555555",
+  "codigo": "482913"
 }
 ```
 
-Si el pedido trae otros campos (por ejemplo `rol`), se ignoran.
+`codigo` (Entrega 5): el que llegó por WhatsApp al pedirlo con `POST /api/auth/registro/codigo` para ese mismo teléfono (ver "Verificación del WhatsApp"). La cuenta se crea solo si es correcto: nunca queda una cuenta con el WhatsApp sin verificar. Si el pedido trae otros campos (por ejemplo `rol`), se ignoran.
 
 **201 Created**, con la cookie `huellavet_sesion`:
 
@@ -118,6 +133,8 @@ Si el pedido trae otros campos (por ejemplo `rol`), se ignoran.
   }
   ```
 
+- `400` con `campos.codigo`, si el código no sirve (se revisa después de los demás campos y del email): "Escribí el código de 6 números que te llegó por WhatsApp", "Primero pedí el código por WhatsApp", "El código venció. Pedí uno nuevo.", "Escribiste mal el código muchas veces. Pedí uno nuevo." o "El código no es correcto".
+
 - `409`, si el email ya tiene una cuenta:
 
   ```json
@@ -138,7 +155,8 @@ Crea una cuenta con rol `RESCATISTA` en estado `PENDIENTE` y deja la sesión ini
   "email": "juan@mail.com",
   "password": "otraClave456",
   "telefono": "+54 9 2323 444444",
-  "organizacion": "Patitas Luján"
+  "organizacion": "Patitas Luján",
+  "codigo": "315620"
 }
 ```
 
@@ -156,7 +174,7 @@ Crea una cuenta con rol `RESCATISTA` en estado `PENDIENTE` y deja la sesión ini
 }
 ```
 
-**Errores:** los mismos que el registro de cliente (`400` y `409`).
+**Errores:** los mismos que el registro de cliente (`400`, también por el código, y `409`).
 
 ---
 
@@ -234,6 +252,7 @@ Sirve para saber quién está logueado al cargar cualquier página: con el `rol`
   "nombre": "Ana Pérez",
   "email": "ana@mail.com",
   "rol": "CLIENTE",
+  "estado_validacion": null,
   "csrf": "5e8a21...0d4f"
 }
 ```
@@ -241,5 +260,246 @@ Sirve para saber quién está logueado al cargar cualquier página: con el `rol`
 **Errores:**
 
 - `401`, si no hay sesión, venció o el JWT fue alterado: `{ "error": "No autenticado" }`.
+
+---
+
+## Rescatistas (Entrega 5)
+
+La veterinaria valida a los rescatistas que se registran. Solo uno `APROBADO` publica en adopciones (lo controla el módulo Adopciones leyendo la base). La decisión es una sola: un rescatista ya aprobado o rechazado no cambia de estado. El circuito completo está en `docs/api/contrato-adopciones.md` del repo Adopciones.
+
+Las tres rutas exigen sesión de veterinario: sin sesión, `401`; con otro rol, `403`. Las dos de POST exigen además el header `X-CSRF-Token` (sin él, `403`).
+
+### Forma del rescatista
+
+```json
+{
+  "id": 105,
+  "nombre": "Rescatista Pendiente",
+  "email": "rescatista2@prueba.huellavet",
+  "telefono": "1155550105",
+  "organizacion": "Patitas al Rescate",
+  "estado_validacion": "PENDIENTE"
+}
+```
+
+`organizacion` puede ser `null`.
+
+### GET /api/rescatistas
+
+Parámetro opcional `estado`: `PENDIENTE` (por defecto), `APROBADO`, `RECHAZADO` o `TODOS`. Ordenados por id, los más viejos primero (hasta 100).
+
+- `200`: `{ "rescatistas": [ ... ] }`
+- `400`: `estado` no es uno de los cuatro.
+
+### POST /api/rescatistas/{id}/aprobar y POST /api/rescatistas/{id}/rechazar
+
+Sin cuerpo.
+
+- `200`: `{ "rescatista": { ... } }` con el estado nuevo.
+- `404`: `{ "error": "Rescatista no encontrado" }` si no existe, no es un rescatista o el id no es un número.
+- `409`: `{ "error": "El rescatista ya fue aprobado" }` (o "rechazado") si no estaba `PENDIENTE`.
+
+Cada validación queda en el log: qué rescatista, qué estado y qué veterinario.
+
+Además, la rescatista recibe un aviso en la campana (tabla `notificacion`, tipo `CUENTA`, canal `WEB`, `id_operacion` `cuenta-{id}-{APROBADO|RECHAZADO}`). Si no se puede guardar el aviso, la validación queda hecha igual y el error va al log.
+
+---
+
+## Mis datos (Entrega 5)
+
+Cada usuario (cliente, rescatista o veterinaria) ve y cambia **los datos de su propia cuenta**: el usuario sale del JWT, nunca de la ruta, así que nadie puede cambiar los de otro. El **email no se cambia** (es el usuario para entrar). Los `PUT` exigen `X-CSRF-Token`. Sin sesión, `401`.
+
+### Forma de una cuenta
+
+```json
+{ "id": 102, "nombre": "Ana Pérez", "email": "ana@ejemplo.com", "telefono": "2323555555", "rol": "CLIENTE", "organizacion": null }
+```
+
+- `telefono`: los 10 dígitos guardados (sin +54 ni 9), o `null` si no tiene (la veterinaria puede no tenerlo).
+- `organizacion`: solo la del rescatista; para los demás, `null`.
+
+### GET /api/cuenta
+
+`200` con la cuenta.
+
+### PUT /api/cuenta
+
+```json
+{ "nombre": "Ana Pérez", "organizacion": "Patitas Luján" }
+```
+
+- `nombre`: las mismas reglas y mensajes que en el registro (tabla de arriba).
+- `telefono`: **no se cambia acá** (si viene, se ignora). Se cambia verificando el número nuevo por WhatsApp: ver "Verificación del WhatsApp".
+- `organizacion`: solo la usa el rescatista (opcional, hasta 100 caracteres; vacía = sin organización). Para los demás se ignora.
+- `email`: si viene, se ignora.
+
+`200` con la cuenta actualizada. `400 { "error": "Datos inválidos", "campos": { ... } }` con un mensaje por campo. El nombre nuevo se ve enseguida en el encabezado (`/api/auth/yo` lo lee de la base).
+
+### PUT /api/cuenta/contrasena
+
+```json
+{ "actual": "mi-contraseña-de-hoy", "nueva": "mi-contraseña-nueva", "repetir": "mi-contraseña-nueva" }
+```
+
+- `actual`: obligatoria ("Escribí tu contraseña actual") y tiene que ser la guardada ("La contraseña actual no es correcta"). Así, con una sesión abierta en otra compu, nadie la cambia sin saberla.
+- `nueva`: las mismas reglas que `password` en el registro, y distinta de la actual ("La contraseña nueva tiene que ser distinta de la actual").
+- `repetir`: igual a la nueva ("Las contraseñas nuevas no coinciden").
+
+`200 { "mensaje": "Tu contraseña se cambió" }`. La sesión sigue abierta; la nueva se usa al próximo inicio de sesión. Si algo está mal, `400` con el campo (también si la actual no es correcta: no es un `401`, la sesión no se cierra).
+
+## Verificación del WhatsApp (Entrega 5)
+
+Los avisos salen por WhatsApp, así que el número tiene que ser de quien se registra: si no, un aviso con datos de su mascota le llegaría a un desconocido. Por eso **nunca queda una cuenta con el WhatsApp sin verificar**:
+
+- **Registro:** primero se pide el código al número (`POST /api/auth/registro/codigo`) y después se manda el registro con ese código. La cuenta se crea solo si el código es correcto.
+- **Cambio de número (Mis datos):** se pide el código al número nuevo (`POST /api/cuenta/telefono/codigo`) y se confirma (`POST /api/cuenta/telefono`). **Recién ahí cambia el teléfono**; mientras tanto sigue el anterior.
+- Las cuentas que ya existían (antes de la migración 019) quedan como estaban.
+
+Reglas (tabla `verificacion_whatsapp`, migración 019):
+
+- El código es de **6 números**, vence a los **10 minutos** y acepta **5 intentos**. Se guarda hasheado. Sirve una sola vez y vale el último que se pidió.
+- A un mismo número se le manda como mucho **un código por minuto** y **5 por hora** (para no llenar de mensajes un número ajeno ni gastar mensajes).
+- Se manda con la plantilla de avisos (`WHATSAPP_PLANTILLA`), o con una de autenticación de Meta si está configurada `WHATSAPP_PLANTILLA_CODIGO`.
+- En `ENTORNO` local y ci el WhatsApp no sale (como los avisos) y la respuesta trae además `codigo`, para poder probar. En dev y en producción, nunca.
+
+### POST /api/auth/registro/codigo
+
+Público. `{ "telefono": "2323 555555", "nombre": "Ana Pérez" }` (`nombre` es opcional: solo para el saludo del WhatsApp).
+
+### POST /api/cuenta/telefono/codigo
+
+Con sesión y CSRF. `{ "telefono": "2323 666666" }`: el número **nuevo**. Si es el mismo que ya tiene, `400` con `campos.telefono` "Ese ya es tu número".
+
+**Las dos responden igual. 200:**
+
+```json
+{
+  "mensaje": "Te mandamos un código por WhatsApp al 2323555555.",
+  "telefono": "2323555555",
+  "vence_en_minutos": 10,
+  "reenviar_en_segundos": 60
+}
+```
+
+**Errores:**
+
+- `400 { "error": "Datos inválidos", "campos": { "telefono": "..." } }`: el teléfono no es válido (mismos mensajes que el registro) o WhatsApp no lo pudo entregar ("No pudimos mandarte el código por WhatsApp a ese número. Revisá que sea tu celular y que tenga WhatsApp.").
+- `429 { "error": "Esperá 40 segundos para pedir otro código", "espera_segundos": 40 }` (o "Pediste muchos códigos para este número. Probá de nuevo en N minutos.").
+- `503 { "error": "No pudimos mandar el código por WhatsApp. Probá de nuevo en unos minutos." }`: WhatsApp no anda (configuración o Meta caído).
+
+### POST /api/cuenta/telefono
+
+Con sesión y CSRF. `{ "codigo": "482913" }`. Si es el del último pedido de cambio, el teléfono pasa a ser el número nuevo. `200` con la cuenta actualizada (forma de "Mis datos"). `400` con `campos.codigo` y los mismos mensajes que el registro.
+
+## Clientes (Entrega 5)
+
+Para la veterinaria: la pantalla **Clientes** (Panel → Mis pacientes) y la **ficha de un cliente**, a la que se llega también desde el nombre del dueño en Mascotas y en la Agenda. **Solo lectura**: cada uno cambia sus datos desde "Mis datos". Sin sesión, `401`; otro rol, `403`.
+
+### GET /api/clientes?buscar=ana&pagina=1
+
+Los usuarios con rol `CLIENTE`, por nombre, **de a 20**.
+
+- `buscar` (opcional, hasta 100 caracteres): por nombre, email o teléfono (cualquier parte, sin importar mayúsculas). `%` y `_` se buscan como letras.
+- `pagina` (desde 1, por defecto 1): `400` si no es un entero desde 1.
+
+`200`:
+
+```json
+{ "datos": [ { "id": 102, "nombre": "Ana Pérez", "email": "ana@ejemplo.com", "telefono": "2323555555", "rol": "CLIENTE", "organizacion": null } ],
+  "pagina": 1, "por_pagina": 20, "hay_mas": false }
+```
+
+### GET /api/clientes/{id}
+
+La ficha (forma de una cuenta) de un **cliente o un rescatista** (los rescatistas también tienen mascotas a cargo). `404 { "error": "Cliente no encontrado" }` si no existe o es una veterinaria. Las mascotas del cliente no vienen acá (son de Pacientes): la pantalla las pide a `GET /api/pacientes/mascotas`.
+
+## Configuración (Entrega 5)
+
+Los parámetros que la veterinaria cambia desde su panel (pantalla `panel/configuracion.html`). Qué parámetros hay, su tipo, su rango y su valor por defecto están en `src/CatalogoConfiguracion.php`. La tabla `configuracion` (migración 014 del Gateway) guarda solo los que se cambiaron. Los demás módulos los leen con `comun/configuracion.php`, y si un parámetro no está guardado usan su valor por defecto.
+
+| Clave | Tipo | Por defecto | Rango | Lo usa |
+|---|---|---|---|---|
+| `hora_apertura` | HORA | `08:00` | 00:00 a 23:58 | Pacientes (turnos): primer horario, desde |
+| `hora_cierre` | HORA | `20:00` | 00:01 a 23:59, después de la apertura | Pacientes (turnos): primer horario, hasta. De 00:00 a 23:59 es atender las 24 horas |
+| `hora_apertura_2` | HORA, opcional | vacío | 00:00 a 23:58, desde el cierre del primero | Pacientes (turnos): segundo horario, desde (horario cortado) |
+| `hora_cierre_2` | HORA, opcional | vacío | 00:01 a 23:59, después de su apertura | Pacientes (turnos): segundo horario, hasta |
+| `precio_consulta` | ENTERO | 15000 | 0 a 1.000.000 pesos | Pacientes (precio de cada turno al sacarse; la franja promocionada le aplica su descuento) |
+| `dias_aviso_vacuna` | ENTERO | 7 | 1 a 30 días | Reportes (motor) |
+| `dias_control_adopcion_1` | ENTERO | 30 | 7 a 180 días | Reportes (motor) |
+| `dias_control_adopcion_2` | ENTERO | 90 | 14 a 365 días, después del primero | Reportes (motor) |
+| `limite_stock_bajo` | ENTERO | 10 | 0 a 1000 unidades | Reportes (motor y reporte de stock) |
+| `dias_liquidar` | ENTERO | 30 | 1 a 180 días | Reportes (qué liquidar) |
+| `minutos_para_pagar` | ENTERO | 15 | 5 a 60 minutos | Inventario (tienda) |
+| `dias_habiles_para_retirar` | ENTERO | 5 | 2 a 15 días hábiles | Inventario (tienda) |
+| `hora_avisos_tienda` | HORA | `09:00` | 07:00 a 20:00 | Inventario (tienda) |
+| `dia_primer_recordatorio` | ENTERO | 2 | 1 a 13 días hábiles, al menos 2 antes del último día para retirar | Inventario (tienda) |
+| `porcentaje_reintegro_anticipado` | ENTERO | 75 | 0 a 100 % | Inventario (tienda: reintegro si el comprador cancela con anticipación) |
+| `porcentaje_reintegro_ultimo_momento` | ENTERO | 50 | 0 a 100 %, no mayor que el anterior | Inventario (tienda: reintegro si cancela a último momento) |
+| `horas_anticipacion_reintegro` | ENTERO | 48 | 1 a 168 horas | Inventario (tienda: qué es "con anticipación") |
+| `direccion` | TEXTO | `Av. San Martín 1450, Luján` | 5 a 120 caracteres | Frontend (portada, pie, paneles, Contactanos y su mapa) |
+| `telefono` | TEXTO (TELEFONO) | `11 3901-0486` | teléfono argentino (10 dígitos, con +54 y 9 opcionales) o de otro país con `+` y su código (8 a 15 dígitos, por ejemplo `+1 555 145 9000`) | Frontend (para llamar) |
+| `whatsapp` | TEXTO (TELEFONO) | `11 3901-0486` | ídem | Frontend (enlaces a WhatsApp) |
+| `email_contacto` | TEXTO (EMAIL) | vacío | email válido o vacío | Frontend |
+| `instagram` | TEXTO (URL) | vacío | `https://` de instagram.com, o vacío | Frontend (ícono del pie) |
+| `facebook` | TEXTO (URL) | vacío | `https://` de facebook.com o fb.com, o vacío | Frontend (ícono del pie) |
+| `youtube` | TEXTO (URL) | vacío | `https://` de youtube.com o youtu.be, o vacío | Frontend (ícono del pie) |
+
+El segundo horario es para el horario cortado (por ejemplo, de 09:00 a 13:00 y de 16:00 a 19:00): van las dos horas o ninguna (`""` lo vacía y se atiende de corrido). Un parámetro que se puede dejar vacío se reconoce porque su `defecto` es `""`.
+
+Los de la tienda valen para las compras nuevas: cada compra guarda sus plazos y su política de reintegro al confirmarse (migraciones 015 y 017 del Gateway).
+
+Los datos de contacto (grupo `CONTACTO`, "Datos de la veterinaria") son de tipo `TEXTO`: `minimo` y `maximo` son el largo y `formato` dice qué se valida (`TEXTO`, `TELEFONO`, `EMAIL` o `URL`). El teléfono se guarda como se escribió (se muestra así). Si es argentino, el enlace de WhatsApp le agrega el 9 de los celulares (`wa.me/549…`); si es de otro país (empieza con `+`), va tal cual (`wa.me/15551459000`). Los que pueden quedar vacíos (`minimo` 0) no se muestran en las páginas.
+
+GET y PUT `/api/configuracion` exigen sesión de veterinario (sin sesión, `401`; otro rol, `403`). El PUT exige además `X-CSRF-Token`.
+
+### GET /api/configuracion
+
+- `200`: `{ "parametros": [ ... ] }`, en el orden de la tabla de arriba. Cada uno:
+
+```json
+{
+  "clave": "hora_apertura", "grupo": "TURNOS", "nombre_grupo": "Turnos",
+  "nombre": "Apertura", "ayuda": "Desde qué hora se pueden dar turnos.",
+  "tipo": "HORA", "formato": null, "unidad": null, "minimo": "06:00", "maximo": "22:00",
+  "defecto": "08:00", "valor": "09:00", "modificado": true,
+  "actualizado_en": "2026-11-20 10:15:00", "actualizado_por": "Dra. Laura Martínez"
+}
+```
+
+En los `ENTERO`, `minimo`, `maximo`, `defecto` y `valor` son números. Si `modificado` es `false`, `valor` es el de por defecto y `actualizado_en` y `actualizado_por` son `null`.
+
+### PUT /api/configuracion
+
+```json
+{ "valores": { "hora_apertura": "09:00", "dias_aviso_vacuna": 5 } }
+```
+
+Solo los que cambian. Se guardan todos o ninguno. Mandar el valor por defecto vuelve el parámetro a como estaba (se borra la fila).
+
+- `200`: la misma respuesta que el GET, ya con los valores nuevos.
+- `400`: `{ "error": "Revisá los valores marcados", "campos": { "hora_cierre": "El cierre tiene que ser después de la apertura" } }`. Una clave que no existe, un valor de otro tipo o fuera de rango, la apertura después del cierre o el segundo control antes del primero (el error va en el campo que se cambió). Sin `valores`: el error va en `campos.valores`.
+
+Cada cambio queda en el log: qué veterinaria y qué claves.
+
+### GET /api/configuracion/contacto
+
+Pública (sin sesión): la usan la portada, el pie de todas las páginas, los paneles, Contactanos y el detalle de producto.
+
+- `200`:
+
+```json
+{
+  "direccion": "Av. San Martín 1450, Luján",
+  "telefono": "11 3901-0486",
+  "whatsapp": "11 3901-0486",
+  "email": null,
+  "instagram": "https://www.instagram.com/huellavet",
+  "facebook": null,
+  "youtube": null,
+  "enlaces": { "telefono": "tel:+541139010486", "whatsapp": "https://wa.me/5491139010486" }
+}
+```
+
+Lo que no está cargado va como `null` (la página no lo muestra). `enlaces` ya trae armado el enlace para llamar y el de WhatsApp.
 
 ---

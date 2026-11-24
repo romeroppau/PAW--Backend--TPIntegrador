@@ -100,20 +100,21 @@ class AuthControlador
             return;
         }
 
-        // 3. Crear el cliente. El rol lo pone el repositorio (CLIENTE): el usuario no lo puede elegir.
-        try {
-            $id = $usuarios->insertarCliente(
+        // 3. Comprobar el código que se mandó por WhatsApp a ese número y crear el cliente, en una
+        //    sola transacción: si el código no es correcto, no se crea nada (Verificación del WhatsApp).
+        //    El rol lo pone el repositorio (CLIENTE): el usuario no lo puede elegir.
+        $id = self::crearConCodigo(
+            $limpios['telefono'],
+            Request::json()['codigo'] ?? null,
+            fn () => $usuarios->insertarCliente(
                 $limpios['nombre'],
                 $limpios['email'],
                 self::hashear($limpios['password']),
                 $limpios['telefono']
-            );
-        } catch (PDOException $error) {
-            if (self::esEmailRepetido($error)) {
-                Response::json(['error' => self::ERROR_EMAIL_REPETIDO], 409);
-                return;
-            }
-            throw $error; // cualquier otro error de la base: lo atrapa el 500 genérico
+            )
+        );
+        if ($id === null) {
+            return; // ya respondió (código incorrecto o email repetido)
         }
 
         // 4. Iniciar la sesión del cliente nuevo y responder 201 (Created).
@@ -139,21 +140,21 @@ class AuthControlador
             return;
         }
 
-        // El repositorio lo crea con rol RESCATISTA y estado PENDIENTE: ninguno de los dos lo elige el usuario.
-        try {
-            $id = $usuarios->insertarRescatista(
+        // Igual que el cliente: solo con el código del WhatsApp correcto. El repositorio lo crea con
+        // rol RESCATISTA y estado PENDIENTE: ninguno de los dos lo elige el usuario.
+        $id = self::crearConCodigo(
+            $limpios['telefono'],
+            Request::json()['codigo'] ?? null,
+            fn () => $usuarios->insertarRescatista(
                 $limpios['nombre'],
                 $limpios['email'],
                 self::hashear($limpios['password']),
                 $limpios['telefono'],
                 $limpios['organizacion']
-            );
-        } catch (PDOException $error) {
-            if (self::esEmailRepetido($error)) {
-                Response::json(['error' => self::ERROR_EMAIL_REPETIDO], 409);
-                return;
-            }
-            throw $error;
+            )
+        );
+        if ($id === null) {
+            return;
         }
 
         Response::json(Sesion::iniciar($usuarios->buscarPorId($id)), 201);
@@ -199,8 +200,39 @@ class AuthControlador
 
 
     // Hashea la contraseña con bcrypt de costo 12 (SEGURIDAD.md). Nunca se guarda en limpio.
+    // La usan los registros y el cambio de contraseña de "Mis datos" (CuentaControlador).
     // password_hash agrega una "sal" aleatoria, así dos contraseñas iguales tienen hashes distintos.
-    private static function hashear(string $password): string
+    // Comprueba el código del WhatsApp y, si es correcto, crea la cuenta con $crear, todo en una
+    // transacción (el código queda usado solo si la cuenta se creó). Devuelve el id, o null si ya
+    // respondió el error: 400 con "campos.codigo" o 409 si el email se registró mientras tanto.
+    private static function crearConCodigo(string $telefono, mixed $codigo, callable $crear): ?int
+    {
+        $db = Database::conectar();
+        $db->beginTransaction();
+        try {
+            $errorDelCodigo = VerificacionControlador::usarCodigoDelRegistro($db, $telefono, $codigo);
+            if ($errorDelCodigo !== null) {
+                $db->commit();   // guarda el intento fallido
+                Response::json(['error' => 'Datos inválidos', 'campos' => ['codigo' => $errorDelCodigo]], 400);
+                return null;
+            }
+
+            $id = $crear();
+            $db->commit();
+            return $id;
+        } catch (PDOException $error) {
+            if ($db->inTransaction()) {
+                $db->rollBack();
+            }
+            if (self::esEmailRepetido($error)) {
+                Response::json(['error' => self::ERROR_EMAIL_REPETIDO], 409);
+                return null;
+            }
+            throw $error; // cualquier otro error de la base: lo atrapa el 500 genérico
+        }
+    }
+
+    public static function hashear(string $password): string
     {
         return password_hash($password, PASSWORD_BCRYPT, ['cost' => 12]);
     }
