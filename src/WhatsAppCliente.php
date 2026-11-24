@@ -97,6 +97,26 @@ class WhatsAppCliente
         return null;
     }
 
+    /**
+     * Todas las formas en que la lista de destinatarios del número de prueba de Meta puede tener un
+     * celular argentino, en el orden en que se prueban cuando Meta responde 131030 ("no está en la
+     * lista"): sin el 9 (54 + 10 dígitos) y con el 15 después de la característica, como se marcaba
+     * antes (por ejemplo, 54 2323 15 555123: así lo muestra Meta en su consola). La característica
+     * tiene 2, 3 o 4 dígitos; con 11 (Buenos Aires) es de 2, si no se prueban 4, 3 y 2.
+     */
+    public static function formasAlternativas(string $normalizado): array
+    {
+        if (!preg_match('/^549(\d{10})$/', $normalizado, $m)) {
+            return [];
+        }
+        $d = $m[1];
+        $formas = ['54' . $d];
+        foreach (str_starts_with($d, '11') ? [2] : [4, 3, 2] as $p) {
+            $formas[] = '54' . substr($d, 0, $p) . '15' . substr($d, $p);
+        }
+        return $formas;
+    }
+
     public static function esPermanente(int $codigoMeta): bool
     {
         return in_array($codigoMeta, self::ERRORES_PERMANENTES, true);
@@ -189,8 +209,12 @@ class WhatsAppCliente
 
         $resultado = $this->llamarApi($token, $numeroId, $destino, $plantilla);
 
-        // Número de prueba + celular argentino: probar sin el 9.
-        if ($resultado->codigoMeta === 131030 && ($alt = self::formaAlternativa($destino)) !== null) {
+        // Número de prueba + celular argentino: probar las otras formas en que Meta lo puede tener
+        // en la lista (sin el 9, o con el 15), hasta que una no dé 131030.
+        foreach (self::formasAlternativas($destino) as $alt) {
+            if ($resultado->codigoMeta !== 131030) {
+                break;
+            }
             $resultado = $this->llamarApi($token, $numeroId, $alt, $plantilla);
         }
 
