@@ -419,8 +419,10 @@ Los parámetros que la veterinaria cambia desde su panel (pantalla `panel/config
 
 | Clave | Tipo | Por defecto | Rango | Lo usa |
 |---|---|---|---|---|
-| `hora_apertura` | HORA | `08:00` | 06:00 a 22:00 | Pacientes (turnos) |
-| `hora_cierre` | HORA | `20:00` | 07:00 a 23:59, después de la apertura | Pacientes (turnos) |
+| `hora_apertura` | HORA | `08:00` | 00:00 a 23:58 | Pacientes (turnos): primer horario, desde |
+| `hora_cierre` | HORA | `20:00` | 00:01 a 23:59, después de la apertura | Pacientes (turnos): primer horario, hasta. De 00:00 a 23:59 es atender las 24 horas |
+| `hora_apertura_2` | HORA, opcional | vacío | 00:00 a 23:58, desde el cierre del primero | Pacientes (turnos): segundo horario, desde (horario cortado) |
+| `hora_cierre_2` | HORA, opcional | vacío | 00:01 a 23:59, después de su apertura | Pacientes (turnos): segundo horario, hasta |
 | `precio_consulta` | ENTERO | 15000 | 0 a 1.000.000 pesos | Pacientes (precio de cada turno al sacarse; la franja promocionada le aplica su descuento) |
 | `dias_aviso_vacuna` | ENTERO | 7 | 1 a 30 días | Reportes (motor) |
 | `dias_control_adopcion_1` | ENTERO | 30 | 7 a 180 días | Reportes (motor) |
@@ -434,10 +436,21 @@ Los parámetros que la veterinaria cambia desde su panel (pantalla `panel/config
 | `porcentaje_reintegro_anticipado` | ENTERO | 75 | 0 a 100 % | Inventario (tienda: reintegro si el comprador cancela con anticipación) |
 | `porcentaje_reintegro_ultimo_momento` | ENTERO | 50 | 0 a 100 %, no mayor que el anterior | Inventario (tienda: reintegro si cancela a último momento) |
 | `horas_anticipacion_reintegro` | ENTERO | 48 | 1 a 168 horas | Inventario (tienda: qué es "con anticipación") |
+| `direccion` | TEXTO | `Av. San Martín 1450, Luján` | 5 a 120 caracteres | Frontend (portada, pie, paneles, Contactanos y su mapa) |
+| `telefono` | TEXTO (TELEFONO) | `11 3901-0486` | teléfono argentino (10 dígitos, con +54 y 9 opcionales) o de otro país con `+` y su código (8 a 15 dígitos, por ejemplo `+1 555 145 9000`) | Frontend (para llamar) |
+| `whatsapp` | TEXTO (TELEFONO) | `11 3901-0486` | ídem | Frontend (enlaces a WhatsApp) |
+| `email_contacto` | TEXTO (EMAIL) | vacío | email válido o vacío | Frontend |
+| `instagram` | TEXTO (URL) | vacío | `https://` de instagram.com, o vacío | Frontend (ícono del pie) |
+| `facebook` | TEXTO (URL) | vacío | `https://` de facebook.com o fb.com, o vacío | Frontend (ícono del pie) |
+| `youtube` | TEXTO (URL) | vacío | `https://` de youtube.com o youtu.be, o vacío | Frontend (ícono del pie) |
+
+El segundo horario es para el horario cortado (por ejemplo, de 09:00 a 13:00 y de 16:00 a 19:00): van las dos horas o ninguna (`""` lo vacía y se atiende de corrido). Un parámetro que se puede dejar vacío se reconoce porque su `defecto` es `""`.
 
 Los de la tienda valen para las compras nuevas: cada compra guarda sus plazos y su política de reintegro al confirmarse (migraciones 015 y 017 del Gateway).
 
-Las dos rutas exigen sesión de veterinario (sin sesión, `401`; otro rol, `403`). El PUT exige además `X-CSRF-Token`.
+Los datos de contacto (grupo `CONTACTO`, "Datos de la veterinaria") son de tipo `TEXTO`: `minimo` y `maximo` son el largo y `formato` dice qué se valida (`TEXTO`, `TELEFONO`, `EMAIL` o `URL`). El teléfono se guarda como se escribió (se muestra así). Si es argentino, el enlace de WhatsApp le agrega el 9 de los celulares (`wa.me/549…`); si es de otro país (empieza con `+`), va tal cual (`wa.me/15551459000`). Los que pueden quedar vacíos (`minimo` 0) no se muestran en las páginas.
+
+GET y PUT `/api/configuracion` exigen sesión de veterinario (sin sesión, `401`; otro rol, `403`). El PUT exige además `X-CSRF-Token`.
 
 ### GET /api/configuracion
 
@@ -447,9 +460,9 @@ Las dos rutas exigen sesión de veterinario (sin sesión, `401`; otro rol, `403`
 {
   "clave": "hora_apertura", "grupo": "TURNOS", "nombre_grupo": "Turnos",
   "nombre": "Apertura", "ayuda": "Desde qué hora se pueden dar turnos.",
-  "tipo": "HORA", "unidad": null, "minimo": "06:00", "maximo": "22:00",
+  "tipo": "HORA", "formato": null, "unidad": null, "minimo": "06:00", "maximo": "22:00",
   "defecto": "08:00", "valor": "09:00", "modificado": true,
-  "actualizado_en": "2026-11-20 10:15:00", "actualizado_por": "Veterinaria de Prueba"
+  "actualizado_en": "2026-11-20 10:15:00", "actualizado_por": "Dra. Laura Martínez"
 }
 ```
 
@@ -467,5 +480,26 @@ Solo los que cambian. Se guardan todos o ninguno. Mandar el valor por defecto vu
 - `400`: `{ "error": "Revisá los valores marcados", "campos": { "hora_cierre": "El cierre tiene que ser después de la apertura" } }`. Una clave que no existe, un valor de otro tipo o fuera de rango, la apertura después del cierre o el segundo control antes del primero (el error va en el campo que se cambió). Sin `valores`: el error va en `campos.valores`.
 
 Cada cambio queda en el log: qué veterinaria y qué claves.
+
+### GET /api/configuracion/contacto
+
+Pública (sin sesión): la usan la portada, el pie de todas las páginas, los paneles, Contactanos y el detalle de producto.
+
+- `200`:
+
+```json
+{
+  "direccion": "Av. San Martín 1450, Luján",
+  "telefono": "11 3901-0486",
+  "whatsapp": "11 3901-0486",
+  "email": null,
+  "instagram": "https://www.instagram.com/huellavet",
+  "facebook": null,
+  "youtube": null,
+  "enlaces": { "telefono": "tel:+541139010486", "whatsapp": "https://wa.me/5491139010486" }
+}
+```
+
+Lo que no está cargado va como `null` (la página no lo muestra). `enlaces` ya trae armado el enlace para llamar y el de WhatsApp.
 
 ---

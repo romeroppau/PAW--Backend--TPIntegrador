@@ -159,4 +159,135 @@ final class CatalogoConfiguracionTest extends TestCase
         [, $errores] = CatalogoConfiguracion::validar(['precio_consulta' => '15000.50'], []);
         $this->assertArrayHasKey('precio_consulta', $errores);
     }
+
+    public function testLosDatosDeContactoTienenSusValoresPorDefecto(): void
+    {
+        $contacto = CatalogoConfiguracion::contacto([]);
+
+        $this->assertSame('Av. San Martín 1450, Luján', $contacto['direccion']);
+        $this->assertSame('11 3901-0486', $contacto['telefono']);
+        $this->assertNull($contacto['email']);
+        $this->assertNull($contacto['instagram']);   // sin cargar: la página no muestra el ícono
+        $this->assertSame(['telefono' => 'tel:+541139010486', 'whatsapp' => 'https://wa.me/5491139010486'], $contacto['enlaces']);
+    }
+
+    public function testLoGuardadoDeContactoSeUsaYArmaLosEnlaces(): void
+    {
+        $guardado = fn ($valor) => ['valor' => $valor, 'actualizado_en' => '2026-11-23 10:00:00', 'actualizado_por' => 'Vet'];
+        $contacto = CatalogoConfiguracion::contacto([
+            'whatsapp' => $guardado('+54 9 2323 555-555'),
+            'instagram' => $guardado('https://www.instagram.com/huellavet'),
+        ]);
+
+        $this->assertSame('+54 9 2323 555-555', $contacto['whatsapp']);   // se muestra como se escribió
+        $this->assertSame('https://wa.me/5492323555555', $contacto['enlaces']['whatsapp']);
+        $this->assertSame('https://www.instagram.com/huellavet', $contacto['instagram']);
+    }
+
+    public function testLosDatosDeContactoValidos(): void
+    {
+        [$limpios, $errores] = CatalogoConfiguracion::validar([
+            'direccion' => '  Calle   Falsa 123, Luján ',
+            'telefono' => '(2323) 42-1234',
+            'email_contacto' => 'Hola@HuellaVet.com.ar',
+            'facebook' => 'https://m.facebook.com/huellavet',
+            'youtube' => '',
+        ], []);
+
+        $this->assertSame([], $errores);
+        $this->assertSame('Calle Falsa 123, Luján', $limpios['direccion']);
+        $this->assertSame('(2323) 42-1234', $limpios['telefono']);
+        $this->assertSame('hola@huellavet.com.ar', $limpios['email_contacto']);
+        $this->assertSame('https://m.facebook.com/huellavet', $limpios['facebook']);
+        $this->assertSame('', $limpios['youtube']);   // vacío vale: es el valor por defecto
+    }
+
+    public function testCadaDatoDeContactoMalTieneSuError(): void
+    {
+        [, $errores] = CatalogoConfiguracion::validar([
+            'direccion' => '',
+            'telefono' => '123',
+            'whatsapp' => 1139010486,
+            'email_contacto' => 'no-es-un-email',
+            'instagram' => 'https://www.facebook.com/huellavet',
+            'facebook' => 'http://www.facebook.com/huellavet',
+            'youtube' => 'https://youtube.com.otro.com/x',
+        ], []);
+
+        $this->assertSame(['direccion', 'telefono', 'whatsapp', 'email_contacto', 'instagram', 'facebook', 'youtube'], array_keys($errores));
+        $this->assertStringStartsWith('El teléfono no es válido. Ejemplo: 11 3901-0486', $errores['telefono']);
+        $this->assertStringContainsString('instagram.com', $errores['instagram']);
+    }
+
+    public function testElWhatsAppPuedeSerDeOtroPaisConSuCodigo(): void
+    {
+        // El número de prueba de Meta: de EE. UU., con + y el 1.
+        [$limpios, $errores] = CatalogoConfiguracion::validar(['whatsapp' => '+1 (555) 145-9000', 'telefono' => '+1 555 145 9000'], []);
+        $this->assertSame([], $errores);
+        $this->assertSame('+1 (555) 145-9000', $limpios['whatsapp']);   // se muestra como se escribió
+
+        $guardado = fn ($valor) => ['valor' => $valor, 'actualizado_en' => '2026-11-23 10:00:00', 'actualizado_por' => 'Vet'];
+        $contacto = CatalogoConfiguracion::contacto(['whatsapp' => $guardado('+1 (555) 145-9000'), 'telefono' => $guardado('+1 555 145 9000')]);
+        $this->assertSame('https://wa.me/15551459000', $contacto['enlaces']['whatsapp']);
+        $this->assertSame('tel:+15551459000', $contacto['enlaces']['telefono']);
+    }
+
+    public function testUnNumeroDeOtroPaisTieneQueTenerElMasYUnLargoPosible(): void
+    {
+        foreach (['15551459000', '+1 555', '+0 555 145 9000', '+1 555 145 9000 1234 56'] as $malo) {
+            [, $errores] = CatalogoConfiguracion::validar(['whatsapp' => $malo], []);
+            $this->assertArrayHasKey('whatsapp', $errores, $malo);
+        }
+        // Argentino con +54 sigue siendo argentino: WhatsApp le agrega el 9.
+        $contacto = CatalogoConfiguracion::contacto(['whatsapp' => ['valor' => '+54 11 3901-0486', 'actualizado_en' => 'x', 'actualizado_por' => 'Vet']]);
+        $this->assertSame('https://wa.me/5491139010486', $contacto['enlaces']['whatsapp']);
+    }
+
+    public function testSeAtiendeLas24Horas(): void
+    {
+        [$limpios, $errores] = CatalogoConfiguracion::validar(['hora_apertura' => '00:00', 'hora_cierre' => '23:59'], []);
+
+        $this->assertSame([], $errores);
+        $this->assertSame(['hora_apertura' => '00:00', 'hora_cierre' => '23:59'], $limpios);
+    }
+
+    public function testHorarioCortadoEnDosFranjas(): void
+    {
+        // De 9 a 13 y de 16 a 19.
+        [$limpios, $errores] = CatalogoConfiguracion::validar(
+            ['hora_apertura' => '09:00', 'hora_cierre' => '13:00', 'hora_apertura_2' => '16:00', 'hora_cierre_2' => '19:00'],
+            []
+        );
+        $this->assertSame([], $errores);
+        $this->assertSame('16:00', $limpios['hora_apertura_2']);
+
+        // Sin cargar, la segunda franja queda vacía (de corrido, como siempre).
+        $porClave = array_column(CatalogoConfiguracion::listar([]), 'valor', 'clave');
+        $this->assertSame('', $porClave['hora_apertura_2']);
+
+        // Vaciarla vuelve a atender de corrido.
+        [$limpios, $errores] = CatalogoConfiguracion::validar(['hora_apertura_2' => '', 'hora_cierre_2' => ''], ['hora_apertura_2' => '16:00', 'hora_cierre_2' => '19:00']);
+        $this->assertSame([], $errores);
+        $this->assertSame(['hora_apertura_2' => '', 'hora_cierre_2' => ''], $limpios);
+    }
+
+    public function testLaSegundaFranjaVaCompletaYDespuesDeLaPrimera(): void
+    {
+        [, $errores] = CatalogoConfiguracion::validar(['hora_apertura_2' => '16:00'], []);
+        $this->assertSame(['hora_cierre_2'], array_keys($errores));   // falta el cierre
+
+        // El primer horario es hasta las 20 (por defecto): a las 16 todavía está abierto.
+        [, $errores] = CatalogoConfiguracion::validar(['hora_apertura_2' => '16:00', 'hora_cierre_2' => '19:00'], []);
+        $this->assertSame(['hora_apertura_2'], array_keys($errores));
+
+        [, $errores] = CatalogoConfiguracion::validar(
+            ['hora_cierre' => '13:00', 'hora_apertura_2' => '19:00', 'hora_cierre_2' => '16:00'],
+            []
+        );
+        $this->assertSame(['hora_cierre_2'], array_keys($errores));
+
+        // Alargar el primero hasta pisar el segundo guardado: el error va en el que se cambió.
+        [, $errores] = CatalogoConfiguracion::validar(['hora_cierre' => '17:00'], ['hora_cierre' => '13:00', 'hora_apertura_2' => '16:00', 'hora_cierre_2' => '19:00']);
+        $this->assertSame(['hora_cierre'], array_keys($errores));
+    }
 }

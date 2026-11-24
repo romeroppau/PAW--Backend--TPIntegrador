@@ -16,20 +16,39 @@ class CatalogoConfiguracion
         'AVISOS' => 'Avisos a los clientes',
         'STOCK' => 'Stock y vencimientos',
         'TIENDA' => 'Tienda',
+        'CONTACTO' => 'Datos de la veterinaria',
     ];
 
     // tipo HORA: "HH:MM" (minimo y maximo también son horas). tipo ENTERO: número entero, con su unidad.
+    // tipo TEXTO: los datos de contacto. minimo y maximo son el largo; formato dice qué se valida
+    // (TEXTO libre, TELEFONO argentino o de otro país con +, EMAIL o URL de una red social, con su dominio en 'dominios').
+    // Con minimo 0 se puede dejar vacío: la página no lo muestra.
     public const PARAMETROS = [
+        // El horario de atención: una franja, y una segunda opcional para el horario cortado (por
+        // ejemplo, de 09:00 a 13:00 y de 16:00 a 19:00). Cualquier hora del día: de 00:00 a 23:59 es
+        // atender las 24 horas.
         'hora_apertura' => [
-            'grupo' => 'TURNOS', 'nombre' => 'Apertura',
+            'grupo' => 'TURNOS', 'nombre' => 'Primer horario: desde',
             'ayuda' => 'Desde qué hora se pueden dar turnos.',
-            'tipo' => 'HORA', 'defecto' => '08:00', 'minimo' => '06:00', 'maximo' => '22:00', 'unidad' => null,
+            'tipo' => 'HORA', 'defecto' => '08:00', 'minimo' => '00:00', 'maximo' => '23:58', 'unidad' => null,
             'usa' => 'Pacientes',
         ],
         'hora_cierre' => [
-            'grupo' => 'TURNOS', 'nombre' => 'Cierre',
-            'ayuda' => 'El último turno tiene que empezar antes de esta hora.',
-            'tipo' => 'HORA', 'defecto' => '20:00', 'minimo' => '07:00', 'maximo' => '23:59', 'unidad' => null,
+            'grupo' => 'TURNOS', 'nombre' => 'Primer horario: hasta',
+            'ayuda' => 'El último turno de este horario tiene que empezar antes de esta hora. Para atender todo el día: de 00:00 a 23:59.',
+            'tipo' => 'HORA', 'defecto' => '20:00', 'minimo' => '00:01', 'maximo' => '23:59', 'unidad' => null,
+            'usa' => 'Pacientes',
+        ],
+        'hora_apertura_2' => [
+            'grupo' => 'TURNOS', 'nombre' => 'Segundo horario: desde',
+            'ayuda' => 'Para el horario cortado (por ejemplo, de 16:00 si el primero es hasta las 13:00). Tiene que ser después del primero. Si lo dejás vacío, se atiende de corrido.',
+            'tipo' => 'HORA', 'opcional' => true, 'defecto' => '', 'minimo' => '00:00', 'maximo' => '23:58', 'unidad' => null,
+            'usa' => 'Pacientes',
+        ],
+        'hora_cierre_2' => [
+            'grupo' => 'TURNOS', 'nombre' => 'Segundo horario: hasta',
+            'ayuda' => 'El último turno del segundo horario tiene que empezar antes de esta hora. Va junto con "Segundo horario: desde".',
+            'tipo' => 'HORA', 'opcional' => true, 'defecto' => '', 'minimo' => '00:01', 'maximo' => '23:59', 'unidad' => null,
             'usa' => 'Pacientes',
         ],
         // Lo usa Pacientes: cada turno guarda el precio base al sacarse (migración 020), con el
@@ -116,6 +135,56 @@ class CatalogoConfiguracion
             'tipo' => 'ENTERO', 'defecto' => 48, 'minimo' => 1, 'maximo' => 168, 'unidad' => 'horas',
             'usa' => 'Inventario',
         ],
+        // Datos de contacto: los muestran la portada, el pie, los paneles, Contactanos y el detalle de
+        // producto (Frontend, con GET /api/configuracion/contacto, que es pública).
+        'direccion' => [
+            'grupo' => 'CONTACTO', 'nombre' => 'Dirección',
+            'ayuda' => 'La dirección de la veterinaria, como la escribirías en Google Maps (se usa también para el mapa de Contactanos).',
+            'tipo' => 'TEXTO', 'formato' => 'TEXTO', 'defecto' => 'Av. San Martín 1450, Luján', 'minimo' => 5, 'maximo' => 120, 'unidad' => null,
+            'usa' => 'Frontend',
+        ],
+        'telefono' => [
+            'grupo' => 'CONTACTO', 'nombre' => 'Teléfono',
+            'ayuda' => 'El teléfono para llamar, con el código de área sin 0 y sin 15 (de otro país: con + y su código, por ejemplo +1 555 145 9000). Se muestra como lo escribas.',
+            'tipo' => 'TEXTO', 'formato' => 'TELEFONO', 'defecto' => '11 3901-0486', 'minimo' => 10, 'maximo' => 20, 'unidad' => null,
+            'usa' => 'Frontend',
+        ],
+        'whatsapp' => [
+            'grupo' => 'CONTACTO', 'nombre' => 'WhatsApp',
+            'ayuda' => 'El número al que escriben los clientes por WhatsApp, con el código de área sin 0 y sin 15 (de otro país: con + y su código, por ejemplo +1 555 145 9000).',
+            'tipo' => 'TEXTO', 'formato' => 'TELEFONO', 'defecto' => '11 3901-0486', 'minimo' => 10, 'maximo' => 20, 'unidad' => null,
+            'usa' => 'Frontend',
+        ],
+        'email_contacto' => [
+            'grupo' => 'CONTACTO', 'nombre' => 'Email de contacto',
+            'ayuda' => 'El email al que pueden escribir los clientes. Si lo dejás vacío, no se muestra.',
+            'tipo' => 'TEXTO', 'formato' => 'EMAIL', 'defecto' => '', 'minimo' => 0, 'maximo' => 150, 'unidad' => null,
+            'usa' => 'Frontend',
+        ],
+        'instagram' => [
+            'grupo' => 'CONTACTO', 'nombre' => 'Instagram',
+            'ayuda' => 'El enlace a la cuenta, por ejemplo https://www.instagram.com/huellavet. Si lo dejás vacío, no se muestra el ícono.',
+            'tipo' => 'TEXTO', 'formato' => 'URL', 'dominios' => ['instagram.com'], 'defecto' => '', 'minimo' => 0, 'maximo' => 255, 'unidad' => null,
+            'usa' => 'Frontend',
+        ],
+        'facebook' => [
+            'grupo' => 'CONTACTO', 'nombre' => 'Facebook',
+            'ayuda' => 'El enlace a la página, por ejemplo https://www.facebook.com/huellavet. Si lo dejás vacío, no se muestra el ícono.',
+            'tipo' => 'TEXTO', 'formato' => 'URL', 'dominios' => ['facebook.com', 'fb.com'], 'defecto' => '', 'minimo' => 0, 'maximo' => 255, 'unidad' => null,
+            'usa' => 'Frontend',
+        ],
+        'youtube' => [
+            'grupo' => 'CONTACTO', 'nombre' => 'YouTube',
+            'ayuda' => 'El enlace al canal, por ejemplo https://www.youtube.com/@huellavet. Si lo dejás vacío, no se muestra el ícono.',
+            'tipo' => 'TEXTO', 'formato' => 'URL', 'dominios' => ['youtube.com', 'youtu.be'], 'defecto' => '', 'minimo' => 0, 'maximo' => 255, 'unidad' => null,
+            'usa' => 'Frontend',
+        ],
+    ];
+
+    // Las claves de los datos de contacto y cómo se llaman en GET /api/configuracion/contacto.
+    private const CONTACTO = [
+        'direccion' => 'direccion', 'telefono' => 'telefono', 'whatsapp' => 'whatsapp',
+        'email_contacto' => 'email', 'instagram' => 'instagram', 'facebook' => 'facebook', 'youtube' => 'youtube',
     ];
 
     // Los parámetros con su valor actual, en el orden del catálogo, para GET /api/configuracion.
@@ -137,6 +206,7 @@ class CatalogoConfiguracion
                 'nombre' => $p['nombre'],
                 'ayuda' => $p['ayuda'],
                 'tipo' => $p['tipo'],
+                'formato' => $p['formato'] ?? null,
                 'unidad' => $p['unidad'],
                 'minimo' => $p['minimo'],
                 'maximo' => $p['maximo'],
@@ -196,6 +266,20 @@ class CatalogoConfiguracion
             $campo = isset($limpios['hora_cierre']) || !isset($limpios['hora_apertura']) ? 'hora_cierre' : 'hora_apertura';
             $errores[$campo] = 'El cierre tiene que ser después de la apertura';
         }
+        // La segunda franja: las dos horas o ninguna, después de la primera y con el cierre después
+        // de su apertura.
+        $apertura2 = $final['hora_apertura_2'];
+        $cierre2 = $final['hora_cierre_2'];
+        $cambioLaSegunda = isset($limpios['hora_apertura_2']) || isset($limpios['hora_cierre_2']);
+        if (($apertura2 === '') !== ($cierre2 === '')) {
+            $campo = $apertura2 === '' ? 'hora_apertura_2' : 'hora_cierre_2';
+            $errores[$campo] = 'Completá las dos horas del segundo horario, o dejá las dos vacías';
+        } elseif ($apertura2 !== '' && $apertura2 < $final['hora_cierre']) {
+            $campo = $cambioLaSegunda || !isset($limpios['hora_cierre']) ? 'hora_apertura_2' : 'hora_cierre';
+            $errores[$campo] = 'El segundo horario tiene que empezar después de que termina el primero';
+        } elseif ($apertura2 !== '' && $apertura2 >= $cierre2) {
+            $errores['hora_cierre_2'] = 'El cierre tiene que ser después de la apertura';
+        }
         // El primer recordatorio tiene que salir antes que el último (que es el día hábil anterior al
         // último día para retirar): al menos 2 días antes del final del plazo.
         if ((int) $final['dia_primer_recordatorio'] > (int) $final['dias_habiles_para_retirar'] - 2) {
@@ -223,11 +307,57 @@ class CatalogoConfiguracion
         return (string) self::PARAMETROS[$clave]['defecto'];
     }
 
+    // Los datos de contacto para GET /api/configuracion/contacto (pública), con los enlaces ya armados
+    // para llamar y para WhatsApp. Los vacíos van como null: la página no los muestra.
+    // $guardados: lo mismo que recibe listar().
+    public static function contacto(array $guardados): array
+    {
+        $valores = array_column(self::listar($guardados), 'valor', 'clave');
+        $datos = [];
+        foreach (self::CONTACTO as $clave => $nombre) {
+            $datos[$nombre] = $valores[$clave] === '' ? null : $valores[$clave];
+        }
+
+        $datos['enlaces'] = [
+            'telefono' => 'tel:+' . self::numeroCompleto($datos['telefono'], false),
+            'whatsapp' => 'https://wa.me/' . self::numeroCompleto($datos['whatsapp'], true),
+        ];
+
+        return $datos;
+    }
+
+    // El número con el código de país y sin nada más, para los enlaces (tel:+…, wa.me/…), o null si
+    // no es un teléfono válido:
+    //   - argentino: 10 dígitos (código de área sin 0 y número sin 15), con +54 y 9 opcionales.
+    //     WhatsApp lo quiere con el 9 de los celulares (549…); para llamar va sin él (54…).
+    //   - de otro país: empieza con + y su código, de 8 a 15 dígitos en total (por ejemplo, el número
+    //     de prueba de Meta, +1 555 145 9000).
+    private static function numeroCompleto(string $telefono, bool $paraWhatsApp): ?string
+    {
+        $soloDigitos = preg_replace('/[\s\-().]/', '', $telefono);
+
+        if (preg_match('/^(\+?54)?9?(\d{10})$/', $soloDigitos, $partes) === 1) {
+            return ($paraWhatsApp ? '549' : '54') . $partes[2];
+        }
+        if (preg_match('/^\+([1-9]\d{7,14})$/', $soloDigitos, $partes) === 1 && !str_starts_with($partes[1], '54')) {
+            return $partes[1];
+        }
+
+        return null;
+    }
+
     // El valor con su tipo (int o "HH:MM") si es válido y está en el rango; si no, null.
     // Acepta el número como entero (JSON) o como texto (lo guardado en la tabla).
     private static function interpretar(array $p, mixed $valor): int|string|null
     {
+        if ($p['tipo'] === 'TEXTO') {
+            return self::interpretarTexto($p, $valor);
+        }
+
         if ($p['tipo'] === 'HORA') {
+            if (($p['opcional'] ?? false) && $valor === '') {
+                return '';   // la segunda franja, sin cargar
+            }
             if (!is_string($valor) || !preg_match('/^([01]\d|2[0-3]):[0-5]\d$/', $valor)) {
                 return null;
             }
@@ -244,8 +374,55 @@ class CatalogoConfiguracion
         return $valor >= $p['minimo'] && $valor <= $p['maximo'] ? $valor : null;
     }
 
+    // Un dato de contacto: sin espacios de más y con el formato que pide. El email, en minúsculas.
+    private static function interpretarTexto(array $p, mixed $valor): ?string
+    {
+        if (!is_string($valor)) {
+            return null;
+        }
+        $valor = trim(preg_replace('/\s+/u', ' ', $valor));
+        if ($valor === '') {
+            return $p['minimo'] === 0 ? '' : null;
+        }
+        if (mb_strlen($valor) < $p['minimo'] || mb_strlen($valor) > $p['maximo']) {
+            return null;
+        }
+
+        return match ($p['formato']) {
+            'TELEFONO' => self::numeroCompleto($valor, true) !== null ? $valor : null,
+            'EMAIL' => filter_var($valor, FILTER_VALIDATE_EMAIL) !== false ? strtolower($valor) : null,
+            'URL' => self::esDeLaRed($valor, $p['dominios']) ? $valor : null,
+            default => $valor,
+        };
+    }
+
+    // Que sea https y del dominio de la red (con www., m. o lo que sea adelante).
+    private static function esDeLaRed(string $url, array $dominios): bool
+    {
+        if (filter_var($url, FILTER_VALIDATE_URL) === false || parse_url($url, PHP_URL_SCHEME) !== 'https') {
+            return false;
+        }
+        $host = strtolower((string) parse_url($url, PHP_URL_HOST));
+        foreach ($dominios as $dominio) {
+            if ($host === $dominio || str_ends_with($host, '.' . $dominio)) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
     private static function mensajeDeRango(array $p): string
     {
+        if ($p['tipo'] === 'TEXTO') {
+            return match ($p['formato']) {
+                'TELEFONO' => 'El teléfono no es válido. Ejemplo: 11 3901-0486 (de otro país, con + y su código: +1 555 145 9000)',
+                'EMAIL' => 'El email no es válido',
+                'URL' => 'Tiene que ser un enlace https de ' . $p['dominios'][0] . ', por ejemplo https://www.' . $p['dominios'][0] . '/huellavet',
+                default => "Tiene que tener entre {$p['minimo']} y {$p['maximo']} caracteres",
+            };
+        }
+
         if ($p['tipo'] === 'HORA') {
             return "Elegí una hora entre las {$p['minimo']} y las {$p['maximo']}";
         }
