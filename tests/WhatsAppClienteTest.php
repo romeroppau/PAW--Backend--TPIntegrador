@@ -51,6 +51,20 @@ final class WhatsAppClienteTest extends TestCase
         $this->assertNull(WhatsAppCliente::formaAlternativa('541112345678'));
     }
 
+    public function testLasFormasEnQueMetaPuedeTenerUnCelularArgentino(): void
+    {
+        // Luján (2323): primero sin el 9 y después con el 15 tras la característica de 4, 3 y 2
+        // dígitos. La segunda es la que muestra la consola de Meta: 54 2323 15 555123.
+        $this->assertSame(
+            ['542323555123', '54232315555123', '54232153555123', '54231523555123'],
+            WhatsAppCliente::formasAlternativas('5492323555123')
+        );
+        // Buenos Aires (11): una sola posición para el 15.
+        $this->assertSame(['541112345678', '54111512345678'], WhatsAppCliente::formasAlternativas('5491112345678'));
+        // Un número que no es un celular argentino normalizado: nada que probar.
+        $this->assertSame([], WhatsAppCliente::formasAlternativas('15551459000'));
+    }
+
     public function testNumeroNoVerificadoEsPermanente(): void
     {
         $r = WhatsAppCliente::interpretarError(400, '{"error":{"code":131030,"message":"Recipient phone number not in allowed list"}}');
