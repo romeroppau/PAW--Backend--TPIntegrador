@@ -88,11 +88,20 @@ class UsuarioRepositorio
 
     // ---------- Validación de rescatistas (Entrega 5) ----------
 
-    // Los rescatistas en ese estado (o todos, con null), los más viejos primero. Hasta 100.
-    public function listarRescatistas(?string $estado): array
+    // Las columnas de un rescatista para la veterinaria: también cuándo y por qué se lo validó
+    // (migración 022). Solo las usan las listas y el perfil, así el login no depende de esa migración.
+    private const COLUMNAS_RESCATISTA = 'id, nombre, email, password_hash, telefono, rol, organizacion,
+        estado_validacion, motivo_rechazo, validado_en';
+
+    // Los rescatistas en ese estado (o todos, con null). Hasta 100.
+    //   - $buscar: parte del nombre, el email o la organización.
+    //   - $desde / $hasta (AAAA-MM-DD, inclusive): el día en que se los aprobó o rechazó (los
+    //     validados antes de la migración 022 no tienen fecha y no entran si se filtra por fecha).
+    // Los pendientes (y todos juntos), por id: los más viejos primero, que son los que esperan hace más.
+    // Los aprobados y los rechazados, los validados más recientemente primero.
+    public function listarRescatistas(?string $estado, ?string $buscar = null, ?string $desde = null, ?string $hasta = null): array
     {
-        $sql = "SELECT id, nombre, email, password_hash, telefono, rol, organizacion, estado_validacion
-                FROM usuario WHERE rol = 'RESCATISTA'";
+        $sql = 'SELECT ' . self::COLUMNAS_RESCATISTA . " FROM usuario WHERE rol = 'RESCATISTA'";
         $valores = [];
 
         if ($estado !== null) {
@@ -100,29 +109,63 @@ class UsuarioRepositorio
             $valores[] = $estado;
         }
 
-        $consulta = $this->db->prepare($sql . ' ORDER BY id LIMIT 100');
+        if ($buscar !== null && $buscar !== '') {
+            // Los comodines de LIKE que escriba la veterinaria se buscan como texto.
+            $patron = '%' . addcslashes($buscar, '%_\\') . '%';
+            $sql .= ' AND (nombre LIKE ? OR email LIKE ? OR organizacion LIKE ?)';
+            array_push($valores, $patron, $patron, $patron);
+        }
+
+        if ($desde !== null) {
+            $sql .= ' AND validado_en >= ?';
+            $valores[] = $desde . ' 00:00:00';
+        }
+
+        if ($hasta !== null) {
+            $sql .= ' AND validado_en < ? + INTERVAL 1 DAY';
+            $valores[] = $hasta;
+        }
+
+        $orden = $estado === null || $estado === 'PENDIENTE' ? 'id' : 'validado_en IS NULL, validado_en DESC, id DESC';
+        $consulta = $this->db->prepare($sql . " ORDER BY $orden LIMIT 100");
         $consulta->execute($valores);
 
         return array_map(fn (array $fila) => $this->crearDesdeFila($fila), $consulta->fetchAll());
     }
 
-    // Aprueba o rechaza a un rescatista PENDIENTE. Devuelve:
+    // El rescatista con ese id, con su validación (para su perfil). null si no hay un rescatista así.
+    public function buscarRescatista(int $id): ?Rescatista
+    {
+        $consulta = $this->db->prepare(
+            'SELECT ' . self::COLUMNAS_RESCATISTA . " FROM usuario WHERE id = ? AND rol = 'RESCATISTA'"
+        );
+        $consulta->execute([$id]);
+
+        return $this->crearDesdeFila($consulta->fetch());
+    }
+
+    // Aprueba o rechaza a un rescatista PENDIENTE. Guarda la fecha y hora (de Argentina, la de PHP),
+    // la veterinaria que lo decidió y, al rechazar, el motivo. Devuelve:
     //   'OK'          si se cambió el estado;
     //   'NO_EXISTE'   si no hay un rescatista con ese id;
     //   'YA_VALIDADO' si ya estaba aprobado o rechazado (no se cambia: la decisión es una sola).
     // La condición "sigue PENDIENTE" va en el mismo UPDATE: si dos veterinarios validan a la vez,
     // solo uno cambia la fila y el otro recibe YA_VALIDADO.
-    public function validarRescatista(int $id, string $estado): string
+    public function validarRescatista(int $id, string $estado, ?string $motivo = null, ?int $veterinarioId = null): string
     {
         if (!in_array($estado, ['APROBADO', 'RECHAZADO'], true)) {
             throw new InvalidArgumentException("Estado de validación inválido: $estado");
         }
 
+        if (($estado === 'RECHAZADO') !== ($motivo !== null)) {
+            throw new InvalidArgumentException('El motivo va solo (y siempre) al rechazar');
+        }
+
         $consulta = $this->db->prepare(
-            "UPDATE usuario SET estado_validacion = ?
+            "UPDATE usuario SET estado_validacion = ?, motivo_rechazo = ?, validado_en = ?, validado_por = ?
              WHERE id = ? AND rol = 'RESCATISTA' AND estado_validacion = 'PENDIENTE'"
         );
-        $consulta->execute([$estado, $id]);
+        $consulta->execute([$estado, $motivo, date('Y-m-d H:i:s'), $veterinarioId, $id]);
 
         if ($consulta->rowCount() === 1) {
             return 'OK';
@@ -288,7 +331,9 @@ class UsuarioRepositorio
                 $fila['password_hash'],
                 (string) $fila['telefono'],
                 $fila['organizacion'],
-                $fila['estado_validacion']
+                $fila['estado_validacion'],
+                $fila['motivo_rechazo'] ?? null,
+                $fila['validado_en'] ?? null
             ),
         };
     }

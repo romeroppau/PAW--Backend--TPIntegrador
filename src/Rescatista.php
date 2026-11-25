@@ -13,7 +13,11 @@ class Rescatista
         private string $passwordHash,
         private string $telefono,
         private ?string $organizacion,
-        private string $estadoValidacion
+        private string $estadoValidacion,
+        // Cuándo lo validó la veterinaria y, si lo rechazó, por qué (migración 022). Solo vienen
+        // cargados en las listas y el perfil de la veterinaria (UsuarioRepositorio::buscarRescatista).
+        private ?string $motivoRechazo = null,
+        private ?string $validadoEn = null
     ) {
     }
 
@@ -63,5 +67,15 @@ class Rescatista
     public function getEstadoValidacion(): string
     {
         return $this->estadoValidacion;
+    }
+
+    public function getMotivoRechazo(): ?string
+    {
+        return $this->motivoRechazo;
+    }
+
+    public function getValidadoEn(): ?string
+    {
+        return $this->validadoEn;
     }
 }

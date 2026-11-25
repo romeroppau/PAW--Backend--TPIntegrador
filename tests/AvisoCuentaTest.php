@@ -19,4 +19,13 @@ final class AvisoCuentaTest extends TestCase
         $this->assertStringContainsString('no aprobó', $mensaje);
         $this->assertLessThanOrEqual(500, mb_strlen($mensaje));
     }
+
+    public function testRechazadaLeDiceElMotivo(): void
+    {
+        $mensaje = RescatistaControlador::mensajeDeCuenta('RECHAZADO', 'No pudimos verificar el refugio');
+
+        $this->assertStringContainsString('Motivo: No pudimos verificar el refugio.', $mensaje);
+        // Con el motivo más largo (255) sigue entrando en un aviso.
+        $this->assertLessThanOrEqual(500, mb_strlen(RescatistaControlador::mensajeDeCuenta('RECHAZADO', str_repeat('a', 255))));
+    }
 }

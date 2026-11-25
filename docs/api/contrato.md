@@ -18,7 +18,8 @@ Las reglas generales que valen para todos los modulos (formato JSON,formato de e
 | `GET /api/auth/yo` | Con sesión | Datos del usuario actual, su rol y su token CSRF |
 | `GET /api/rescatistas` | Veterinario | Rescatistas por estado de validación (Entrega 5) |
 | `POST /api/rescatistas/{id}/aprobar` | Veterinario | Aprobar a un rescatista pendiente: desde ahí puede publicar en adopciones |
-| `POST /api/rescatistas/{id}/rechazar` | Veterinario | Rechazar a un rescatista pendiente |
+| `GET /api/rescatistas/{id}` | Veterinario | Perfil de un rescatista, con cuándo y por qué se lo validó |
+| `POST /api/rescatistas/{id}/rechazar` | Veterinario | Rechazar a un rescatista pendiente, con el motivo |
 | `GET /api/cuenta` | Con sesión | Mis datos: los datos de la propia cuenta (Entrega 5) |
 | `PUT /api/cuenta` | Con sesión | Cambiar el nombre (y la organización, el rescatista) |
 | `POST /api/cuenta/telefono/codigo` | Con sesión | Mandar por WhatsApp el código al número nuevo (Entrega 5) |
@@ -267,7 +268,7 @@ Sirve para saber quién está logueado al cargar cualquier página: con el `rol`
 
 La veterinaria valida a los rescatistas que se registran. Solo uno `APROBADO` publica en adopciones (lo controla el módulo Adopciones leyendo la base). La decisión es una sola: un rescatista ya aprobado o rechazado no cambia de estado. El circuito completo está en `docs/api/contrato-adopciones.md` del repo Adopciones.
 
-Las tres rutas exigen sesión de veterinario: sin sesión, `401`; con otro rol, `403`. Las dos de POST exigen además el header `X-CSRF-Token` (sin él, `403`).
+Las cuatro rutas exigen sesión de veterinario: sin sesión, `401`; con otro rol, `403`. Las dos de POST exigen además el header `X-CSRF-Token` (sin él, `403`).
 
 ### Forma del rescatista
 
@@ -278,30 +279,51 @@ Las tres rutas exigen sesión de veterinario: sin sesión, `401`; con otro rol, 
   "email": "rescatista2@prueba.huellavet",
   "telefono": "1155550105",
   "organizacion": "Patitas al Rescate",
-  "estado_validacion": "PENDIENTE"
+  "estado_validacion": "RECHAZADO",
+  "validado_en": "2026-11-24 10:35:12",
+  "motivo_rechazo": "No pudimos verificar que el refugio exista"
 }
 ```
 
-`organizacion` puede ser `null`.
+`organizacion` puede ser `null`. `validado_en` es la fecha y hora (de Argentina) en que la veterinaria lo aprobó o rechazó: `null` si sigue pendiente o si se validó antes de la migración 022 (que empezó a guardarla). `motivo_rechazo` solo viene en los rechazados (`null` en los demás y en los rechazados antes de la 022).
 
 ### GET /api/rescatistas
 
-Parámetro opcional `estado`: `PENDIENTE` (por defecto), `APROBADO`, `RECHAZADO` o `TODOS`. Ordenados por id, los más viejos primero (hasta 100).
+Parámetros opcionales:
+
+- `estado`: `PENDIENTE` (por defecto), `APROBADO`, `RECHAZADO` o `TODOS`.
+- `buscar`: parte del nombre, el email o la organización (hasta 60 letras).
+- `desde` y `hasta` (`AAAA-MM-DD`, inclusive): el día en que se lo aprobó o rechazó. Los que no tienen `validado_en` no entran cuando se filtra por fecha.
+
+Los pendientes (y `TODOS`), por id, los más viejos primero; los aprobados y los rechazados, los validados más recientemente primero. Hasta 100.
 
 - `200`: `{ "rescatistas": [ ... ] }`
-- `400`: `estado` no es uno de los cuatro.
+- `400`: `estado` no es uno de los cuatro; o `{ "error": "Revisá los filtros", "campos": { "desde": "La fecha no es válida" } }` (también `buscar` y `hasta`, que no puede ser anterior a `desde`).
+
+### GET /api/rescatistas/{id}
+
+El perfil del rescatista para la veterinaria (la forma de arriba). Sus publicaciones las da Adopciones: `GET /api/adopciones/moderacion?estado=TODAS&rescatista_id={id}`.
+
+- `200`: `{ "rescatista": { ... } }`
+- `404`: `{ "error": "Rescatista no encontrado" }` si no existe, no es un rescatista o el id no es un número.
 
 ### POST /api/rescatistas/{id}/aprobar y POST /api/rescatistas/{id}/rechazar
 
-Sin cuerpo.
+Aprobar va sin cuerpo. Rechazar lleva el motivo, que se guarda y le llega al rescatista en el aviso:
+
+```json
+{ "motivo": "No pudimos verificar que el refugio exista" }
+```
+
+- `400`: `{ "error": "Revisá el motivo del rechazo", "campos": { "motivo": "Escribí el motivo del rechazo" } }` si falta, o "El motivo tiene que tener entre 3 y 255 letras".
 
 - `200`: `{ "rescatista": { ... } }` con el estado nuevo.
 - `404`: `{ "error": "Rescatista no encontrado" }` si no existe, no es un rescatista o el id no es un número.
 - `409`: `{ "error": "El rescatista ya fue aprobado" }` (o "rechazado") si no estaba `PENDIENTE`.
 
-Cada validación queda en el log: qué rescatista, qué estado y qué veterinario.
+Cada validación queda en el log y en la base (`validado_en`, `validado_por` y `motivo_rechazo`, migración 022): qué rescatista, qué estado, cuándo y qué veterinario.
 
-Además, la rescatista recibe un aviso en la campana (tabla `notificacion`, tipo `CUENTA`, canal `WEB`, `id_operacion` `cuenta-{id}-{APROBADO|RECHAZADO}`). Si no se puede guardar el aviso, la validación queda hecha igual y el error va al log.
+Además, la rescatista recibe un aviso en la campana (tabla `notificacion`, tipo `CUENTA`, canal `WEB`, `id_operacion` `cuenta-{id}-{APROBADO|RECHAZADO}`). Si se lo rechazó, el aviso dice el motivo. Si no se puede guardar el aviso, la validación queda hecha igual y el error va al log.
 
 ---
 
