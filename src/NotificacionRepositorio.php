@@ -174,6 +174,20 @@ class NotificacionRepositorio
         return $stmt->fetchAll(PDO::FETCH_ASSOC);
     }
 
+    /** Un aviso de WhatsApp sin enviar, por su id_operacion (para el envío inmediato), o null. */
+    public function pendienteWhatsAppPorOperacion(string $idOperacion): ?array
+    {
+        $stmt = $this->db->prepare(
+            "SELECT n.id, n.mensaje, n.intentos, u.nombre, u.telefono
+             FROM notificacion n
+             JOIN usuario u ON u.id = n.usuario_id
+             WHERE n.id_operacion = ? AND n.canal = 'WHATSAPP' AND n.enviada_en IS NULL AND n.intentos < ?"
+        );
+        $stmt->execute([$idOperacion, self::MAX_INTENTOS]);
+        $fila = $stmt->fetch(PDO::FETCH_ASSOC);
+        return $fila === false ? null : $fila;
+    }
+
     /**
      * Reserva el aviso para esta corrida sumándole un intento. false si otra corrida ya lo tomó
      * (o ya salió): así dos tareas superpuestas no mandan el mismo WhatsApp dos veces.

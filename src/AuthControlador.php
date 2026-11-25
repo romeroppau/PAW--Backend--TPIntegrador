@@ -6,7 +6,7 @@
 // Los métodos son static para poder conectarlos al router así: [AuthControlador::class, 'login'].
 class AuthControlador
 {
-    // Mensaje único para cualquier falla del login: no revela si el email existe ni si la cuenta está bloqueada.
+    // Mensaje único para el email que no existe y la contraseña incorrecta: no revela si el email existe.
     private const ERROR_LOGIN = 'Email o contraseña incorrectos';
     // Mensaje cuando el email ya tiene cuenta. Revela que el email está registrado,
     // pero es un límite aceptado (SEGURIDAD.md): sin él, la persona no entendería por qué no puede registrarse.
@@ -41,10 +41,11 @@ class AuthControlador
             return;
         }
 
-        // La cuenta está bloqueada: mismo mensaje. Mientras dure el bloqueo, ni se revisa la contraseña.
+        // La cuenta está bloqueada: mientras dure el bloqueo ni se revisa la contraseña, y se avisa cuánto
+        // falta (25/11: antes decía "Email o contraseña incorrectos" aunque la contraseña fuera la correcta).
         if ($usuarios->estaBloqueado($usuario->getId())) {
             Logger::info("Login fallido: cuenta bloqueada ($email)");
-            Response::json(['error' => self::ERROR_LOGIN], 401);
+            self::responderBloqueo($usuarios->segundosDeBloqueo($usuario->getId()));
             return;
         }
 
@@ -52,6 +53,12 @@ class AuthControlador
         if (!$usuario->iniciarSesion($password)) {
             $usuarios->registrarFalloDeLogin($usuario->getId());
             Logger::info("Login fallido: contraseña incorrecta ($email)");
+            // Si este fallo fue el 5.º, ya se avisa el bloqueo.
+            $segundos = $usuarios->segundosDeBloqueo($usuario->getId());
+            if ($segundos > 0) {
+                self::responderBloqueo($segundos);
+                return;
+            }
             Response::json(['error' => self::ERROR_LOGIN], 401);
             return;
         }
@@ -60,6 +67,18 @@ class AuthControlador
         $usuarios->reiniciarFallos($usuario->getId());
 
         Response::json(Sesion::iniciar($usuario), 200);
+    }
+
+    // 429 con los segundos que faltan, para que la pantalla no deje intentar hasta que pase.
+    private static function responderBloqueo(int $segundos): void
+    {
+        $minutos = max(1, (int) ceil($segundos / 60));
+        Response::json([
+            'error' => 'Tu cuenta quedó bloqueada por 15 minutos por demasiados intentos fallidos. '
+                . "Probá de nuevo en $minutos " . ($minutos === 1 ? 'minuto' : 'minutos') . '.',
+            'bloqueada' => true,
+            'segundos_restantes' => $segundos,
+        ], 429);
     }
 
         // GET /api/backend/salud
