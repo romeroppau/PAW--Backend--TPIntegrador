@@ -138,6 +138,11 @@ $router->get(
     [RescatistaControlador::class, 'listar']
 );
 
+$router->get(
+    '/api/rescatistas/{id}',
+    [RescatistaControlador::class, 'ver']
+);
+
 $router->post(
     '/api/rescatistas/{id}/aprobar',
     [RescatistaControlador::class, 'aprobar']
