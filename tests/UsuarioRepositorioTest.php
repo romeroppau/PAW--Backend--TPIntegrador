@@ -133,9 +133,13 @@ final class UsuarioRepositorioTest extends TestCase
 
         $this->usuarios->registrarFalloDeLogin($id);
         $this->assertTrue($this->usuarios->estaBloqueado($id), 'Con el 5° fallo se bloquea');
+        $segundos = $this->usuarios->segundosDeBloqueo($id);
+        $this->assertGreaterThan(890, $segundos, 'Faltan unos 15 minutos');
+        $this->assertLessThanOrEqual(900, $segundos);
 
         $this->usuarios->reiniciarFallos($id);
         $this->assertFalse($this->usuarios->estaBloqueado($id), 'Un login correcto desbloquea');
+        $this->assertSame(0, $this->usuarios->segundosDeBloqueo($id));
     }
 
     // Los 5 fallos tienen que ser dentro de 15 minutos desde el primero. Si el primero fue hace más,

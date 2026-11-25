@@ -2,7 +2,14 @@
 
 class NotificacionControlador
 {
-    private const TIPOS = ['VACUNA', 'CONTROL_ADOPCION', 'STOCK_BAJO', 'PROMOCION', 'CUENTA', 'POSTULACION', 'COMPRA'];
+    private const TIPOS = ['VACUNA', 'CONTROL_ADOPCION', 'STOCK_BAJO', 'PROMOCION', 'CUENTA', 'POSTULACION', 'COMPRA', 'TURNO'];
+    // Avisos que nacen de algo que hizo una persona (la veterinaria da un turno, la rescatista elige,
+    // se paga una compra): el WhatsApp sale en el momento, sin esperar a la tarea programada (25/11).
+    // Los del motor diario (vacunas, controles, stock, promociones) siguen saliendo con la tarea.
+    private const ENVIO_INMEDIATO = ['TURNO', 'POSTULACION', 'COMPRA', 'CUENTA'];
+    // Tiempo máximo del envío inmediato: quien llama espera hasta 3 segundos (si no alcanza, el aviso
+    // queda pendiente y lo manda la tarea).
+    private const TIMEOUT_INMEDIATO = 2;
     private const CANALES = ['WEB', 'WHATSAPP'];
     private const MAX_MENSAJE = 500;
     private const MAX_ID_OPERACION = 100;
@@ -58,6 +65,14 @@ class NotificacionControlador
         $aplicado = $repo->insertar(
             $usuarioId, $tipo, $canal, trim($mensaje), $fecha, trim($idOperacion)
         );
+
+        // WhatsApp de algo que acaba de pasar: sale ya (si falla, queda para la tarea).
+        if ($aplicado && $canal === 'WHATSAPP' && in_array($tipo, self::ENVIO_INMEDIATO, true) && $fecha <= date('Y-m-d H:i:s')) {
+            $aviso = $repo->pendienteWhatsAppPorOperacion(trim($idOperacion));
+            if ($aviso !== null) {
+                self::enviarUno($repo, new WhatsAppCliente(self::TIMEOUT_INMEDIATO), $aviso);
+            }
+        }
 
         Response::json(['aplicado' => $aplicado], 200);
     }
@@ -184,7 +199,8 @@ class NotificacionControlador
         return $dt !== false && $dt->format('Y-m-d H:i:s') === $f;
     }
 
-    // POST /api/notificaciones/tareas/enviar (lo llama GitHub Actions cada 15 minutos)
+    // POST /api/notificaciones/tareas/enviar (lo llama GitHub Actions cada 15 minutos). Los avisos de
+    // ENVIO_INMEDIATO ya salieron al crearse; acá salen los del motor y los que fallaron.
     public static function enviarPendientes(): void
     {
         $esperado = Config::get('TAREAS_TOKEN');
@@ -207,37 +223,19 @@ class NotificacionControlador
         $configuracion = null;
 
         foreach ($repo->pendientesWhatsApp(20) as $aviso) {
-            $id = (int) $aviso['id'];
+            $resultado = self::enviarUno($repo, $cliente, $aviso);
 
-            // Otra corrida lo tomó primero: no se manda dos veces.
-            if (!$repo->tomarParaEnviar($id, (int) $aviso['intentos'])) {
-                continue;
-            }
-
-            $telefono = trim((string) ($aviso['telefono'] ?? ''));
-            if ($telefono === '') {
-                $repo->registrarFallo($id, 'SIN_TELEFONO', true);
-                $descartadas++;
-                continue;
-            }
-
-            $r = $cliente->enviar($telefono, self::limpiar((string) $aviso['nombre']), self::limpiar((string) $aviso['mensaje']));
-
-            if ($r->ok) {
-                $repo->marcarEnviada($id);
+            if ($resultado === 'ENVIADA') {
                 $enviadas++;
-            } elseif ($r->deConfiguracion) {
-                // Token vencido, falta una variable, plantilla mal: fallarían todos. Se corta acá
-                // y se devuelve el intento; salen solos cuando se arregla la configuración.
-                $repo->devolverIntento($id, $r->motivo);
-                $configuracion = $r->motivo;
-                break;
-            } elseif ($r->permanente) {
-                $repo->registrarFallo($id, $r->motivo, true);
+            } elseif ($resultado === 'DESCARTADA') {
                 $descartadas++;
-            } else {
-                $repo->registrarFallo($id, $r->motivo, false);
+            } elseif ($resultado === 'REINTENTAR') {
                 $reintentar++;
+            } elseif (str_starts_with($resultado, 'CONFIGURACION:')) {
+                // Token vencido, falta una variable, plantilla mal: fallarían todos. Se corta acá;
+                // salen solos cuando se arregla la configuración.
+                $configuracion = substr($resultado, strlen('CONFIGURACION:'));
+                break;
             }
         }
 
@@ -254,6 +252,38 @@ class NotificacionControlador
 
         // 200 igual: la tarea corrió. El workflow muestra el resumen en su log.
         Response::json($respuesta, 200);
+    }
+
+    // Manda un aviso de WhatsApp (de la tarea o el envío inmediato). Devuelve ENVIADA, DESCARTADA (no va a
+    // salir nunca: queda en la web), REINTENTAR (algo pasajero), CONFIGURACION:<motivo> u OCUPADA (otra
+    // corrida lo tomó primero: no se manda dos veces).
+    private static function enviarUno(NotificacionRepositorio $repo, WhatsAppCliente $cliente, array $aviso): string
+    {
+        $id = (int) $aviso['id'];
+
+        if (!$repo->tomarParaEnviar($id, (int) $aviso['intentos'])) {
+            return 'OCUPADA';
+        }
+
+        $telefono = trim((string) ($aviso['telefono'] ?? ''));
+        if ($telefono === '') {
+            $repo->registrarFallo($id, 'SIN_TELEFONO', true);
+            return 'DESCARTADA';
+        }
+
+        $r = $cliente->enviar($telefono, self::limpiar((string) $aviso['nombre']), self::limpiar((string) $aviso['mensaje']));
+
+        if ($r->ok) {
+            $repo->marcarEnviada($id);
+            return 'ENVIADA';
+        }
+        if ($r->deConfiguracion) {
+            $repo->devolverIntento($id, $r->motivo);
+            return 'CONFIGURACION:' . $r->motivo;
+        }
+        $repo->registrarFallo($id, $r->motivo, $r->permanente);
+
+        return $r->permanente ? 'DESCARTADA' : 'REINTENTAR';
     }
 
     // Meta rechaza saltos de línea y más de 4 espacios seguidos en los parámetros de plantilla.

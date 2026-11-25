@@ -123,7 +123,7 @@ Los servicios externos son MercadoPago y WhatsApp. Las tareas programadas las di
   - un rescatista siempre se crea en estado `PENDIENTE`. Puede iniciar sesión en cualquier estado, pero solo publica en adopciones si está `APROBADO`;
   - si el email ya tiene una cuenta, el registro lo informa ("Ya existe una cuenta con ese email"). Esto revela que el email está registrado, pero es un límite aceptado: sin ese mensaje, la persona no entendería por qué no puede registrarse. El login, en cambio, nunca lo revela.
 - Login:
-  - el error es el mismo para email y para contraseña ("Email o contraseña incorrectos"), y también para una cuenta bloqueada, así no se revela qué emails están registrados;
+  - el error es el mismo para email y para contraseña ("Email o contraseña incorrectos"), así no se revela qué emails están registrados. Una cuenta bloqueada, en cambio, responde `429` con cuánto falta (25/11): antes daba el mismo error aunque la contraseña fuera la correcta y la persona no entendía qué pasaba. Revela que esa cuenta existe solo después de 5 intentos fallidos sobre ella, un límite aceptado;
   - 5 intentos fallidos en 15 minutos bloquean el login de esa cuenta durante 15 minutos. Los 15 minutos se cuentan desde el primer fallo (columna `primer_fallo_en` de `usuario`); un login correcto reinicia el contador.
 - Autenticación con **JWT** (JSON Web Token: un texto firmado que identifica al usuario que inició sesión; cualquiera puede leer su contenido, pero nadie puede modificarlo sin invalidar la firma).
   - Backend lo firma con su clave privada (RS256), y los otros cuatro módulos lo verifican con la clave pública.

@@ -14,6 +14,11 @@
 class WhatsAppCliente
 {
     private const TIMEOUT_SEGUNDOS = 8;
+
+    // El envío inmediato (NotificacionControlador) usa uno más corto: quien lo pidió está esperando.
+    public function __construct(private int $timeout = self::TIMEOUT_SEGUNDOS)
+    {
+    }
     // v20.0 venció el 24/09/2026 (Meta la redirige sola a la más vieja vigente). Se puede cambiar
     // sin tocar el código con WHATSAPP_API_VERSION.
     private const VERSION_API = 'v25.0';
@@ -240,7 +245,7 @@ class WhatsAppCliente
                 'Content-Type: application/json',
             ],
             CURLOPT_RETURNTRANSFER => true,
-            CURLOPT_TIMEOUT => self::TIMEOUT_SEGUNDOS,
+            CURLOPT_TIMEOUT => $this->timeout,
         ]);
         $respuesta = curl_exec($ch);
         $errorCurl = curl_errno($ch);
