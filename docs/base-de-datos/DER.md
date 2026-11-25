@@ -44,6 +44,7 @@ erDiagram
     promocion_franja ||--o{ turno : "aplica descuento"
 
     turno ||--o| consulta : "inicia"
+    evento_sanitario ||--o{ turno : "se da en"
     turno ||--o| adopcion : "chequeo obligatorio"
 
     consulta ||--o{ item_insumo_consulta : "usa"
@@ -143,6 +144,7 @@ erDiagram
     insumo {
         INT_UNSIGNED id PK
         VARCHAR_120 nombre
+        ENUM aplicacion "SEXTUPLE, TRIPLE_FELINA, ANTIRRABICA, TOS_PERRERAS, LEUCEMIA_FELINA, ANTIPARASITARIO (NULL)"
         INT_UNSIGNED stock
         DECIMAL_10_2 costo
         ENUM estado "DISPONIBLE, EN_FALTA, YA_PEDIDO"
@@ -226,8 +228,11 @@ erDiagram
         ENUM especie "PERRO, GATO, OTRO"
         ENUM tipo "VACUNA, DESPARASITACION"
         VARCHAR_100 nombre
+        ENUM aplicacion "SEXTUPLE, TRIPLE_FELINA, ANTIRRABICA, TOS_PERRERAS, LEUCEMIA_FELINA, ANTIPARASITARIO"
+        SMALLINT_UNSIGNED orden "dosis: 1, 2, 3, refuerzo"
         SMALLINT_UNSIGNED edad_inicio_semanas
         SMALLINT_UNSIGNED repetir_cada_meses "NULL"
+        BOOLEAN automatico "0: opcional, la agrega el veterinario"
     }
 
     evento_sanitario {
@@ -259,7 +264,8 @@ erDiagram
         INT_UNSIGNED veterinario_id FK
         DATE fecha
         TIME hora
-        ENUM motivo "CONSULTA, VACUNACION, CHEQUEO_ADOPCION"
+        ENUM motivo "CONSULTA, VACUNACION, CHEQUEO_ADOPCION, DESPARASITACION, CASTRACION, CIRUGIA, CONTROL, URGENCIA"
+        INT_UNSIGNED evento_sanitario_id FK "NULL"
         ENUM estado "PROGRAMADO, EN_ATENCION, ATENDIDO, CANCELADO, AUSENTE"
         DECIMAL_10_2 precio_consulta "NULL"
         TINYINT_UNSIGNED descuento "NULL"
@@ -355,7 +361,7 @@ erDiagram
 | **Backend** | `verificacion_whatsapp` | `019` | E5 | Códigos de 6 dígitos hasheados con vencimiento de 10 minutos para verificar el teléfono por WhatsApp al registrarse o cambiarlo |
 | **Inventario** | `producto` | `002` | E3 | Catálogo de la tienda con su stock, precio, categoría, especie, fecha de vencimiento e imagen (`MEDIUMBLOB`) |
 | **Inventario** | `movimiento_inventario` | `002`, `003`, `010` | E3–E5 | Historial inmutable de variaciones de stock de productos e insumos (`ENTRADA`, `SALIDA`, `AJUSTE`) con `id_operacion` único |
-| **Inventario** | `insumo` | `003` | E3–E4 | Materiales internos de uso clínico (`DISPONIBLE`, `EN_FALTA`, `YA_PEDIDO`) |
+| **Inventario** | `insumo` | `003`, `025` | E3–E4 | Materiales internos de uso clínico (`DISPONIBLE`, `EN_FALTA`, `YA_PEDIDO`). Desde la `025`, qué vacuna o antiparasitario del calendario es (`aplicacion`) |
 | **Inventario** | `carrito` | `010` | E5 | Carrito de compra de un cliente o rescatista (a lo sumo un carrito `ABIERTO` por usuario mediante columna generada `abierto`) |
 | **Inventario** | `item_carrito` | `010` | E5 | Productos dentro del carrito con la cantidad y el precio cobrado al confirmar |
 | **Inventario** | `factura_compra` | `010`, `012`, `015`, `017` | E5 | Factura `V-…` de la tienda con sus plazos (`pagar_antes_de`, `retirar_hasta`), motivo de cancelación y política/estado de reintegro parcial |
@@ -363,8 +369,8 @@ erDiagram
 | **Inventario** | `promocion` | `016` | E5 | Descuentos del 5 % al 90 % sobre productos publicados desde las sugerencias de Reportes ("Qué liquidar") |
 | **Pacientes** | `mascota` | `004` | E4 | Ficha clínica del animal con su foto y su dueño actual (cliente o rescatista) |
 | **Pacientes** | `turno` | `004`, `020` | E4–E5 | Agenda de turnos con motivo, estado, horario liberado al cancelar (`ocupa_horario`) y precio/descuento congelado al reservar |
-| **Pacientes** | `plan_sanitario` | `005` | E4 | Catálogo base de vacunas y desparasitaciones por especie y edad |
-| **Pacientes** | `evento_sanitario` | `005`, `006` | E4 | Calendario sanitario de cada mascota (programado y aplicado en consulta) |
+| **Pacientes** | `plan_sanitario` | `005`, `025` | E4 | Catálogo base de vacunas y desparasitaciones por especie y edad. La `025` suma qué vacuna es (`aplicacion`), la dosis (`orden`) y las opcionales (`automatico = 0`) |
+| **Pacientes** | `evento_sanitario` | `005`, `006`, `025` | E4 | Calendario sanitario de cada mascota (programado y aplicado en consulta o a mano). Desde la `025` el veterinario lo edita y los turnos de vacunación y desparasitación quedan atados a un evento |
 | **Pacientes** | `consulta` | `006` | E4 | Atención clínica de un turno: diagnóstico, observaciones y valor base |
 | **Pacientes** | `item_insumo_consulta` | `006` | E4 | Insumos utilizados en la consulta con su costo unitario histórico |
 | **Pacientes** | `item_producto_consulta` | `006` | E4 | Productos agregados en la consulta con su precio unitario histórico |
@@ -399,6 +405,6 @@ erDiagram
 |---|---|---|
 | **`backend`** | `usuario`, `notificacion`, `verificacion_whatsapp`, `configuracion` (con `DELETE`), `resena` (con `DELETE`) | `mascota`, `adopcion` (para la ficha de clientes de la veterinaria) |
 | **`inventario`** | `producto`, `insumo`, `movimiento_inventario` (solo `SELECT, INSERT`), `carrito`, `item_carrito` (con `DELETE`), `factura_compra`, `pago`, `promocion` | `usuario`, `configuracion` |
-| **`pacientes`** | `mascota`, `turno`, `evento_sanitario`, `consulta`, `item_insumo_consulta` (con `DELETE`), `item_producto_consulta` (con `DELETE`), `factura_consulta`, `promocion_franja` | `plan_sanitario`, `usuario`, `producto`, `insumo`, `configuracion` |
+| **`pacientes`** | `mascota`, `turno`, `evento_sanitario` (con `DELETE`, `025`), `consulta`, `item_insumo_consulta` (con `DELETE`), `item_producto_consulta` (con `DELETE`), `factura_consulta`, `promocion_franja` | `plan_sanitario`, `usuario`, `producto`, `insumo`, `configuracion` |
 | **`adopciones`** | `publicacion`, `adopcion`, `postulacion` | `usuario`, `mascota`, `turno`, `consulta` |
 | **`reportes`** | — *(no tiene permisos de escritura en ninguna tabla)* | `usuario`, `mascota`, `turno`, `consulta`, `item_insumo_consulta`, `item_producto_consulta`, `factura_consulta`, `evento_sanitario`, `plan_sanitario`, `producto`, `insumo`, `movimiento_inventario`, `adopcion`, `publicacion`, `configuracion`, `promocion_franja`, `v_turnos_atendidos` |
