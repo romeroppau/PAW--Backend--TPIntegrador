@@ -39,11 +39,13 @@ final class UsuarioRepositorioTest extends TestCase
             return;
         }
 
-        // La migración está en ApiGateway: base/ queda al lado de comun/.
-        $migracion = (getenv('COMUN_DIR') ?: __DIR__ . '/../../comun') . '/../base/001_backend_usuario.sql';
+        // Las migraciones están en ApiGateway: base/ queda al lado de comun/. La 001 crea la tabla y la
+        // 022 le suma cuándo y por qué se validó a cada rescatista.
+        $base = (getenv('COMUN_DIR') ?: __DIR__ . '/../../comun') . '/../base/';
 
         self::$db->exec('DROP TABLE IF EXISTS usuario');
-        self::$db->exec(file_get_contents($migracion));
+        self::$db->exec(file_get_contents($base . '001_backend_usuario.sql'));
+        self::$db->exec(file_get_contents($base . '022_backend_rescatista_validacion.sql'));
     }
 
     // Antes de CADA prueba: vacía la tabla, así cada prueba arranca limpia y no depende de las otras.
@@ -53,6 +55,8 @@ final class UsuarioRepositorioTest extends TestCase
             $this->markTestSkipped('No hay base de prueba: levantá el MySQL local y cargá TEST_DB_PASSWORD');
         }
 
+        // validado_por apunta a otro usuario (022): primero se suelta, después se borra.
+        self::$db->exec('UPDATE usuario SET validado_por = NULL');
         self::$db->exec('DELETE FROM usuario');
         $this->usuarios = new UsuarioRepositorio(self::$db);
     }
@@ -179,13 +183,72 @@ final class UsuarioRepositorioTest extends TestCase
     {
         $id = $this->usuarios->insertarRescatista('Juan Gómez', 'juan@mail.com', self::hash('clave12345'), '2323444444', null);
 
-        $this->assertSame('OK', $this->usuarios->validarRescatista($id, 'RECHAZADO'));
+        $this->assertSame('OK', $this->usuarios->validarRescatista($id, 'RECHAZADO', 'No es un refugio'));
         $this->assertSame('RECHAZADO', $this->usuarios->buscarPorId($id)->getEstadoValidacion());
 
-        // Ya está decidido: ni aprobarlo ni volver a rechazarlo cambia nada.
+        // Ya está decidido: ni aprobarlo ni volver a rechazarlo cambia nada (tampoco el motivo).
         $this->assertSame('YA_VALIDADO', $this->usuarios->validarRescatista($id, 'APROBADO'));
-        $this->assertSame('YA_VALIDADO', $this->usuarios->validarRescatista($id, 'RECHAZADO'));
-        $this->assertSame('RECHAZADO', $this->usuarios->buscarPorId($id)->getEstadoValidacion());
+        $this->assertSame('YA_VALIDADO', $this->usuarios->validarRescatista($id, 'RECHAZADO', 'Otro motivo'));
+        $rescatista = $this->usuarios->buscarRescatista($id);
+        $this->assertSame('RECHAZADO', $rescatista->getEstadoValidacion());
+        $this->assertSame('No es un refugio', $rescatista->getMotivoRechazo());
+    }
+
+    public function testValidarGuardaCuandoYQuienYElMotivoSoloAlRechazar(): void
+    {
+        $vet = $this->usuarios->insertarVeterinario('Dra. Laura', 'vet@mail.com', self::hash('clave12345'));
+        $aprobado = $this->usuarios->insertarRescatista('Juan Gómez', 'juan@mail.com', self::hash('clave12345'), '2323444444', null);
+        $rechazado = $this->usuarios->insertarRescatista('Sol Ruiz', 'sol@mail.com', self::hash('clave12345'), '2323333333', null);
+        $antes = date('Y-m-d H:i:s');
+
+        $this->usuarios->validarRescatista($aprobado, 'APROBADO', null, $vet);
+        $this->usuarios->validarRescatista($rechazado, 'RECHAZADO', 'Datos falsos', $vet);
+
+        $uno = $this->usuarios->buscarRescatista($aprobado);
+        $this->assertNull($uno->getMotivoRechazo());
+        $this->assertGreaterThanOrEqual($antes, $uno->getValidadoEn());
+        $otro = $this->usuarios->buscarRescatista($rechazado);
+        $this->assertSame('Datos falsos', $otro->getMotivoRechazo());
+        $this->assertSame($vet, (int) self::$db->query("SELECT validado_por FROM usuario WHERE id = $rechazado")->fetchColumn());
+
+        // El motivo va solo (y siempre) al rechazar.
+        $tercero = $this->usuarios->insertarRescatista('Lía Paz', 'lia@mail.com', self::hash('clave12345'), '2323222222', null);
+        $this->expectException(InvalidArgumentException::class);
+        $this->usuarios->validarRescatista($tercero, 'RECHAZADO');
+    }
+
+    public function testListarRescatistasBuscaYFiltraPorElDiaDeValidacion(): void
+    {
+        $juan = $this->usuarios->insertarRescatista('Juan Gómez', 'juan@mail.com', self::hash('clave12345'), '2323444444', 'Patitas Luján');
+        $sol = $this->usuarios->insertarRescatista('Sol Ruiz', 'sol@mail.com', self::hash('clave12345'), '2323333333', null);
+        $this->usuarios->validarRescatista($juan, 'APROBADO');
+        $this->usuarios->validarRescatista($sol, 'APROBADO');
+        self::$db->exec("UPDATE usuario SET validado_en = '2026-10-01 10:00:00' WHERE id = $juan");
+
+        // Por nombre, email u organización, sin importar mayúsculas.
+        $this->assertSame([$juan], $this->ids($this->usuarios->listarRescatistas('APROBADO', 'patitas')));
+        $this->assertSame([$sol], $this->ids($this->usuarios->listarRescatistas('APROBADO', 'sol@')));
+        // Un % se busca como texto, no como comodín.
+        $this->assertSame([], $this->usuarios->listarRescatistas('APROBADO', '%'));
+
+        // Los validados más recientemente primero.
+        $this->assertSame([$sol, $juan], $this->ids($this->usuarios->listarRescatistas('APROBADO')));
+        // Por día (inclusive).
+        $this->assertSame([$juan], $this->ids($this->usuarios->listarRescatistas('APROBADO', null, '2026-10-01', '2026-10-01')));
+        $this->assertSame([$sol], $this->ids($this->usuarios->listarRescatistas('APROBADO', null, '2026-10-02')));
+    }
+
+    public function testBuscarRescatistaSoloDevuelveRescatistas(): void
+    {
+        $cliente = $this->usuarios->insertarCliente('Ana Pérez', 'ana@mail.com', self::hash('clave12345'), '2323555555');
+
+        $this->assertNull($this->usuarios->buscarRescatista($cliente));
+        $this->assertNull($this->usuarios->buscarRescatista(999999));
+    }
+
+    private function ids(array $usuarios): array
+    {
+        return array_map(fn ($u) => $u->getId(), $usuarios);
     }
 
     public function testSoloSeValidanRescatistas(): void
