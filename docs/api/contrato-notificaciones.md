@@ -32,7 +32,7 @@ X-Servicio-Token: <INTERNAL_TOKEN>
 | Campo | Regla |
 |---|---|
 | `usuario_id` | entero > 0 (no `"15"`) y el usuario existe |
-| `tipo` | `VACUNA`, `CONTROL_ADOPCION`, `STOCK_BAJO`, `PROMOCION`, `CUENTA`, `POSTULACION`, `COMPRA` |
+| `tipo` | `VACUNA`, `CONTROL_ADOPCION`, `STOCK_BAJO`, `PROMOCION`, `CUENTA`, `POSTULACION`, `COMPRA`, `TURNO` (25/11, migración 024: turnos que da, reprograma o cancela la veterinaria) |
 | `canal` | `WEB` o `WHATSAPP`. Un aviso por los dos canales son **dos llamadas** con distinto `id_operacion` |
 | `mensaje` | texto, hasta 500 caracteres |
 | `fecha_programada` | `Y-m-d H:i:s`, hora de Argentina. El WhatsApp no sale antes de esa hora |
@@ -82,6 +82,8 @@ Marca como leídos **todos** los avisos WEB sin leer del usuario. Con `X-CSRF-To
 Con `X-CSRF-Token`. `200 { "id": 901, "leida": true }` (marcarla dos veces también da 200).
 `401` sin sesión · `403` sin CSRF · `404` si no existe, no es del usuario o no es de canal WEB
 (mismo 404, para no revelar que existe).
+
+**Envío inmediato (25/11):** un aviso `WHATSAPP` de tipo `TURNO`, `POSTULACION`, `COMPRA` o `CUENTA` (los que nacen de algo que hizo una persona) se manda en el momento en que llega, si ya es su `fecha_programada`. Si no sale (sin teléfono, Meta no responde en 2 segundos, etc.), queda pendiente y lo manda la tarea. Los del motor diario (`VACUNA`, `CONTROL_ADOPCION`, `STOCK_BAJO`, `PROMOCION`) salen con la tarea.
 
 ## POST /api/notificaciones/tareas/enviar
 

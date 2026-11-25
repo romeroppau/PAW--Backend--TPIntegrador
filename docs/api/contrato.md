@@ -218,7 +218,13 @@ Cada login genera un token CSRF nuevo.
   { "error": "Email o contraseña incorrectos" }
   ```
 
-**Bloqueo:** 5 intentos fallidos en 15 minutos, contados desde el primer fallo, bloquean la cuenta durante 15 minutos. Mientras está bloqueada, incluso la contraseña correcta recibe el `401`. Un login correcto reinicia el contador.
+**Bloqueo:** 5 intentos fallidos en 15 minutos, contados desde el primer fallo, bloquean la cuenta durante 15 minutos. Un login correcto reinicia el contador. (25/11) Mientras está bloqueada, incluso con la contraseña correcta, responde `429` (también en el 5.º fallo, el que bloquea):
+
+```json
+{ "error": "Tu cuenta quedó bloqueada por 15 minutos por demasiados intentos fallidos. Probá de nuevo en 15 minutos.", "bloqueada": true, "segundos_restantes": 900 }
+```
+
+La pantalla de login usa `segundos_restantes` para no dejar intentar hasta que pase. Revela que esa cuenta existe, pero solo después de 5 intentos fallidos sobre ella (decisión del 25/11, ver SEGURIDAD.md).
 
 ---
 

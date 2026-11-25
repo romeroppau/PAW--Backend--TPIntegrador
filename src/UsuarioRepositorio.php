@@ -190,6 +190,18 @@ class UsuarioRepositorio
         return (int) $consulta->fetchColumn() > 0;
     }
 
+    // Cuántos segundos le faltan al bloqueo (0 si no está bloqueada). Para avisarle a la persona
+    // cuánto esperar (25/11).
+    public function segundosDeBloqueo(int $id): int
+    {
+        $consulta = $this->db->prepare(
+            'SELECT GREATEST(0, TIMESTAMPDIFF(SECOND, NOW(), bloqueado_hasta)) FROM usuario WHERE id = ?'
+        );
+        $consulta->execute([$id]);
+
+        return (int) $consulta->fetchColumn();
+    }
+
     // Registra un login fallido. Se hace en dos pasos:
     // 1) Si no había fallos, o el primero fue hace más de 15 minutos, empieza una serie nueva
     //    (intentos = 1, primer_fallo_en = ahora). Si no, suma 1 al contador.
