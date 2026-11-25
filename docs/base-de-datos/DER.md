@@ -44,7 +44,8 @@ erDiagram
     promocion_franja ||--o{ turno : "aplica descuento"
 
     turno ||--o| consulta : "inicia"
-    evento_sanitario ||--o{ turno : "se da en"
+    turno ||--|{ turno_motivo : "tiene"
+    evento_sanitario ||--o{ turno_motivo : "se da en"
     turno ||--o| adopcion : "chequeo obligatorio"
 
     consulta ||--o{ item_insumo_consulta : "usa"
@@ -264,13 +265,19 @@ erDiagram
         INT_UNSIGNED veterinario_id FK
         DATE fecha
         TIME hora
-        ENUM motivo "CONSULTA, VACUNACION, CHEQUEO_ADOPCION, DESPARASITACION, CASTRACION, CIRUGIA, CONTROL, URGENCIA"
-        INT_UNSIGNED evento_sanitario_id FK "NULL"
+        ENUM motivo "principal: CONSULTA, VACUNACION, CHEQUEO_ADOPCION, DESPARASITACION, CASTRACION, CIRUGIA, CONTROL, URGENCIA"
         ENUM estado "PROGRAMADO, EN_ATENCION, ATENDIDO, CANCELADO, AUSENTE"
         DECIMAL_10_2 precio_consulta "NULL"
         TINYINT_UNSIGNED descuento "NULL"
         INT_UNSIGNED promocion_franja_id FK "NULL"
         TINYINT ocupa_horario "GENERATED"
+    }
+
+    turno_motivo {
+        INT_UNSIGNED id PK
+        INT_UNSIGNED turno_id FK
+        ENUM motivo "CONSULTA, VACUNACION, CHEQUEO_ADOPCION, DESPARASITACION, CASTRACION, CIRUGIA, CONTROL, URGENCIA"
+        INT_UNSIGNED evento_sanitario_id FK "NULL"
     }
 
     consulta {
@@ -369,8 +376,9 @@ erDiagram
 | **Inventario** | `promocion` | `016` | E5 | Descuentos del 5 % al 90 % sobre productos publicados desde las sugerencias de Reportes ("Qué liquidar") |
 | **Pacientes** | `mascota` | `004` | E4 | Ficha clínica del animal con su foto y su dueño actual (cliente o rescatista) |
 | **Pacientes** | `turno` | `004`, `020` | E4–E5 | Agenda de turnos con motivo, estado, horario liberado al cancelar (`ocupa_horario`) y precio/descuento congelado al reservar |
+| **Pacientes** | `turno_motivo` | `026`, `027` | E5 | Los motivos de cada turno (puede tener varios); los de vacunación y desparasitación con el evento del calendario que se da. `turno.motivo` queda como el principal |
 | **Pacientes** | `plan_sanitario` | `005`, `025` | E4 | Catálogo base de vacunas y desparasitaciones por especie y edad. La `025` suma qué vacuna es (`aplicacion`), la dosis (`orden`) y las opcionales (`automatico = 0`) |
-| **Pacientes** | `evento_sanitario` | `005`, `006`, `025` | E4 | Calendario sanitario de cada mascota (programado y aplicado en consulta o a mano). Desde la `025` el veterinario lo edita y los turnos de vacunación y desparasitación quedan atados a un evento |
+| **Pacientes** | `evento_sanitario` | `005`, `006`, `025` | E4 | Calendario sanitario de cada mascota (programado y aplicado en consulta o a mano). Desde la `025` lo carga y edita el veterinario (no se arma solo), y cada vacunación o desparasitación de un turno queda atada a un evento (`turno_motivo`, `026`) |
 | **Pacientes** | `consulta` | `006` | E4 | Atención clínica de un turno: diagnóstico, observaciones y valor base |
 | **Pacientes** | `item_insumo_consulta` | `006` | E4 | Insumos utilizados en la consulta con su costo unitario histórico |
 | **Pacientes** | `item_producto_consulta` | `006` | E4 | Productos agregados en la consulta con su precio unitario histórico |
@@ -405,6 +413,6 @@ erDiagram
 |---|---|---|
 | **`backend`** | `usuario`, `notificacion`, `verificacion_whatsapp`, `configuracion` (con `DELETE`), `resena` (con `DELETE`) | `mascota`, `adopcion` (para la ficha de clientes de la veterinaria) |
 | **`inventario`** | `producto`, `insumo`, `movimiento_inventario` (solo `SELECT, INSERT`), `carrito`, `item_carrito` (con `DELETE`), `factura_compra`, `pago`, `promocion` | `usuario`, `configuracion` |
-| **`pacientes`** | `mascota`, `turno`, `evento_sanitario` (con `DELETE`, `025`), `consulta`, `item_insumo_consulta` (con `DELETE`), `item_producto_consulta` (con `DELETE`), `factura_consulta`, `promocion_franja` | `plan_sanitario`, `usuario`, `producto`, `insumo`, `configuracion` |
+| **`pacientes`** | `mascota`, `turno`, `turno_motivo`, `evento_sanitario` (con `DELETE`, `025`), `consulta`, `item_insumo_consulta` (con `DELETE`), `item_producto_consulta` (con `DELETE`), `factura_consulta`, `promocion_franja` | `plan_sanitario`, `usuario`, `producto`, `insumo`, `configuracion` |
 | **`adopciones`** | `publicacion`, `adopcion`, `postulacion` | `usuario`, `mascota`, `turno`, `consulta` |
-| **`reportes`** | — *(no tiene permisos de escritura en ninguna tabla)* | `usuario`, `mascota`, `turno`, `consulta`, `item_insumo_consulta`, `item_producto_consulta`, `factura_consulta`, `evento_sanitario`, `plan_sanitario`, `producto`, `insumo`, `movimiento_inventario`, `adopcion`, `publicacion`, `configuracion`, `promocion_franja`, `v_turnos_atendidos` |
+| **`reportes`** | — *(no tiene permisos de escritura en ninguna tabla)* | `usuario`, `mascota`, `turno`, `consulta`, `item_insumo_consulta`, `item_producto_consulta`, `factura_consulta`, `evento_sanitario`, `plan_sanitario`, `producto`, `insumo`, `movimiento_inventario`, `adopcion`, `publicacion`, `configuracion`, `promocion_franja`, `turno_motivo`, `v_turnos_atendidos` |
