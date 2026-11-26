@@ -455,6 +455,15 @@ Los parámetros que la veterinaria cambia desde su panel (pantalla `panel/config
 | `dias_aviso_vacuna` | ENTERO | 7 | 1 a 30 días | Reportes (motor) |
 | `dias_control_adopcion_1` | ENTERO | 30 | 7 a 180 días | Reportes (motor) |
 | `dias_control_adopcion_2` | ENTERO | 90 | 14 a 365 días, después del primero | Reportes (motor) |
+| `dias_vacuna_sextuple_dosis` | ENTERO | 21 | 1 a 730 días | Pacientes (calendario y turnos: entre dosis de la séxtuple) |
+| `dias_vacuna_sextuple_refuerzo` | ENTERO | 330 | 1 a 730 días | Pacientes (entre refuerzos anuales de la séxtuple) |
+| `dias_vacuna_triple_felina_dosis` | ENTERO | 21 | 1 a 730 días | Pacientes (entre dosis de la triple felina) |
+| `dias_vacuna_triple_felina_refuerzo` | ENTERO | 330 | 1 a 730 días | Pacientes (entre refuerzos anuales de la triple felina) |
+| `dias_vacuna_leucemia_felina_dosis` | ENTERO | 21 | 1 a 730 días | Pacientes (entre dosis de la leucemia felina) |
+| `dias_vacuna_leucemia_felina_refuerzo` | ENTERO | 330 | 1 a 730 días | Pacientes (entre refuerzos anuales de la leucemia felina) |
+| `dias_vacuna_antirrabica` | ENTERO | 330 | 1 a 730 días | Pacientes (entre dosis de la antirrábica) |
+| `dias_vacuna_tos_perreras` | ENTERO | 330 | 1 a 730 días | Pacientes (entre dosis de la tos de las perreras) |
+| `dias_desparasitacion` | ENTERO | 14 | 1 a 730 días | Pacientes (entre desparasitaciones) |
 | `limite_stock_bajo` | ENTERO | 10 | 0 a 1000 unidades | Reportes (motor y reporte de stock) |
 | `dias_liquidar` | ENTERO | 30 | 1 a 180 días | Reportes (qué liquidar) |
 | `minutos_para_pagar` | ENTERO | 15 | 5 a 60 minutos | Inventario (tienda) |
