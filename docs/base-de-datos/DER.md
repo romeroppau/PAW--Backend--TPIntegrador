@@ -2,6 +2,8 @@
 
 Una única base de datos MySQL en Aiven compartida por los cinco módulos (**Backend**, **Inventario**, **Pacientes**, **Adopciones** y **Reportes**). Cada módulo se conecta con su propio usuario de MySQL, escribe únicamente en sus tablas y lee las de los demás módulos en modo solo lectura (`SELECT`).
 
+El modelo completo de producción (migraciones `001` a `029`: todas las columnas con su tipo, claves, índices, `CHECK` y vistas) está también en DBML: [`modelo-produccion.dbml`](modelo-produccion.dbml). Se ve pegándolo en [dbdiagram.io](https://dbdiagram.io).
+
 ---
 
 ## 1. Diagrama Entidad-Relación (Mermaid)
