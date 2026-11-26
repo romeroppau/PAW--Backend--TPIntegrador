@@ -1,0 +1,983 @@
+// HuellaVet — modelo de datos de producción (MySQL 8, base huellavet), en DBML.
+// Generado de las migraciones base/001 a base/029 del Gateway (las que tiene aplicadas producción
+// desde el 26/11/2026), corridas en un MySQL vacío y leídas de information_schema: tablas, columnas,
+// claves, índices, claves foráneas, CHECK y vistas. El detalle de cada tabla está en DER.md.
+// Se abre en https://dbdiagram.io (pegar el texto). Para draw.io: dbdiagram.io → Export → SQL o PNG.
+
+Project huellavet {
+  database_type: 'MySQL'
+  Note: '''
+  Sistema de la veterinaria HuellaVet (PAW, UNLu). Una base compartida por cinco módulos (Backend,
+  Inventario, Pacientes, Adopciones y Reportes); cada módulo tiene su usuario de MySQL con permisos
+  solo sobre sus tablas (ver "Permisos de MySQL por módulo" en DER.md).
+  '''
+}
+
+Table adopcion {
+  id "int unsigned" [pk, increment]
+  publicacion_id "int unsigned" [not null]
+  estado adopcion_estado [not null, default: 'PUBLICADA']
+  adoptante_id "int unsigned"
+  turno_chequeo_id "int unsigned"
+  fecha_inicio datetime [not null]
+  fecha_fin datetime
+
+  indexes {
+    adoptante_id [name: 'ix_adopcion_adoptante']
+    (estado, fecha_fin) [name: 'ix_adopcion_estado']
+    publicacion_id [unique, name: 'uq_adopcion_publicacion']
+    turno_chequeo_id [unique, name: 'uq_adopcion_turno_chequeo']
+  }
+
+  Note: '''
+  Módulo Adopciones (migración 007).
+  CHECK ck_adopcion_adoptante: ((estado not in ('ADOPTANTE_ELEGIDO','CHEQUEO_PENDIENTE','FINALIZADA')) or (adoptante_id is not null))
+  CHECK ck_adopcion_chequeo: ((estado not in ('CHEQUEO_PENDIENTE','FINALIZADA')) or (turno_chequeo_id is not null))
+  CHECK ck_adopcion_fin: ((estado in ('FINALIZADA','CANCELADA')) = (fecha_fin is not null))
+  '''
+}
+
+Table carrito {
+  id "int unsigned" [pk, increment]
+  cliente_id "int unsigned" [not null]
+  estado carrito_estado [not null, default: 'ABIERTO']
+  creado_en datetime [not null]
+  abierto tinyint [note: 'Columna generada: if((estado = \'ABIERTO\'),1,NULL)']
+
+  indexes {
+    (cliente_id, abierto) [unique, name: 'uq_carrito_abierto']
+  }
+
+  Note: '''
+  Módulo Inventario (migración 010).
+  '''
+}
+
+Table configuracion {
+  clave varchar(60) [pk]
+  valor varchar(255) [not null]
+  actualizado_en datetime [not null]
+  actualizado_por "int unsigned" [not null]
+
+  indexes {
+    actualizado_por [name: 'fk_configuracion_usuario']
+  }
+
+  Note: '''
+  Módulo Backend (migración 014).
+  '''
+}
+
+Table consulta {
+  id "int unsigned" [pk, increment]
+  turno_id "int unsigned" [not null]
+  diagnostico text
+  observaciones text
+  valor_base decimal(10,2) [not null]
+  estado consulta_estado [not null, default: 'ABIERTA']
+  finalizada_en datetime
+
+  indexes {
+    turno_id [unique, name: 'uq_consulta_turno']
+  }
+
+  Note: '''
+  Módulo Pacientes (migración 006).
+  CHECK ck_consulta_finalizada: ((estado = 'ABIERTA') or ((diagnostico is not null) and (finalizada_en is not null)))
+  CHECK ck_consulta_valor_base: (valor_base >= 0)
+  '''
+}
+
+Table evento_sanitario {
+  id "int unsigned" [pk, increment]
+  mascota_id "int unsigned" [not null]
+  plan_sanitario_id "int unsigned"
+  tipo evento_sanitario_tipo [not null]
+  nombre varchar(100) [not null]
+  fecha_programada date [not null]
+  fecha_aplicada date
+  consulta_id "int unsigned"
+
+  indexes {
+    plan_sanitario_id [name: 'fk_evento_plan']
+    consulta_id [name: 'ix_evento_consulta']
+    (mascota_id, fecha_programada) [name: 'ix_evento_mascota']
+  }
+
+  Note: '''
+  Módulo Pacientes (migración 005).
+  CHECK ck_evento_aplicado: ((consulta_id is null) or (fecha_aplicada is not null))
+  '''
+}
+
+Table factura_compra {
+  id "int unsigned" [pk, increment]
+  numero varchar(20) [not null]
+  carrito_id "int unsigned" [not null]
+  total decimal(10,2) [not null]
+  estado factura_compra_estado [not null, default: 'PENDIENTE_PAGO']
+  motivo_cancelacion factura_compra_motivo_cancelacion
+  cancelada_en datetime
+  reintegro_porcentaje "tinyint unsigned"
+  reintegro_monto decimal(10,2)
+  reintegro_estado factura_compra_reintegro_estado
+  reintegro_en datetime
+  fecha datetime [not null]
+  pagar_antes_de datetime
+  retirar_hasta date
+  reintegro_anticipado "tinyint unsigned"
+  reintegro_ultimo_momento "tinyint unsigned"
+  reintegro_horas "smallint unsigned"
+  entregada_en datetime
+  entregada_por "int unsigned"
+
+  indexes {
+    entregada_por [name: 'fk_factura_compra_entrega']
+    reintegro_estado [name: 'ix_factura_reintegro_estado']
+    carrito_id [unique, name: 'uq_factura_compra_carrito']
+    numero [unique, name: 'uq_factura_compra_numero']
+  }
+
+  Note: '''
+  Módulo Inventario (migración 010).
+  CHECK ck_factura_compra_total: (total >= 0)
+  CHECK ck_factura_reintegro: (((reintegro_porcentaje is null) or (reintegro_porcentaje <= 100)) and ((reintegro_monto is null) or ((reintegro_monto >= 0) and (reintegro_monto <= total))))
+  CHECK ck_factura_reintegro_politica: (((reintegro_anticipado is null) or (reintegro_anticipado <= 100)) and ((reintegro_ultimo_momento is null) or (reintegro_ultimo_momento <= 100)))
+  '''
+}
+
+Table factura_consulta {
+  id "int unsigned" [pk, increment]
+  numero varchar(20) [not null]
+  consulta_id "int unsigned" [not null]
+  subtotal_base decimal(10,2) [not null]
+  subtotal_insumos decimal(10,2) [not null]
+  subtotal_productos decimal(10,2) [not null]
+  total decimal(10,2) [not null]
+  huellitas_usadas "int unsigned"
+  estado factura_consulta_estado [not null, default: 'PENDIENTE_PAGO']
+  fecha datetime [not null, default: `CURRENT_TIMESTAMP`]
+
+  indexes {
+    consulta_id [unique, name: 'uq_factura_consulta_consulta']
+    numero [unique, name: 'uq_factura_consulta_numero']
+  }
+
+  Note: '''
+  Módulo Pacientes (migración 006).
+  CHECK ck_factura_montos: ((subtotal_base >= 0) and (subtotal_insumos >= 0) and (subtotal_productos >= 0) and (total >= 0))
+  CHECK ck_factura_numero: (numero like 'C-%')
+  '''
+}
+
+Table insumo {
+  id "int unsigned" [pk, increment]
+  nombre varchar(120) [not null]
+  aplicacion insumo_aplicacion
+  stock "int unsigned" [not null, default: 0]
+  fecha_vencimiento date
+  vence boolean [not null, default: true]
+  costo decimal(10,2) [not null]
+  estado insumo_estado [not null, default: 'DISPONIBLE']
+  activo boolean [not null, default: true]
+
+  indexes {
+    (activo, nombre) [name: 'ix_insumo_listado']
+  }
+
+  Note: '''
+  Módulo Inventario (migración 003).
+  CHECK ck_insumo_costo: (costo >= 0)
+  '''
+}
+
+Table item_carrito {
+  id "int unsigned" [pk, increment]
+  carrito_id "int unsigned" [not null]
+  producto_id "int unsigned" [not null]
+  cantidad "int unsigned" [not null]
+  precio_unitario decimal(10,2) [not null]
+  cantidad_promocion "int unsigned" [not null, default: 0]
+  precio_promocion decimal(10,2)
+  huellitas_a_canjear "int unsigned" [not null, default: 0]
+
+  indexes {
+    producto_id [name: 'fk_item_carrito_producto']
+    (carrito_id, producto_id) [unique, name: 'uq_item_carrito']
+  }
+
+  Note: '''
+  Módulo Inventario (migración 010).
+  CHECK ck_item_carrito_cantidad: (cantidad > 0)
+  CHECK ck_item_carrito_precio: (precio_unitario >= 0)
+  CHECK ck_item_carrito_promocion: (cantidad_promocion <= cantidad)
+  '''
+}
+
+Table item_insumo_consulta {
+  id "int unsigned" [pk, increment]
+  consulta_id "int unsigned" [not null]
+  insumo_id "int unsigned" [not null]
+  cantidad "int unsigned" [not null]
+  costo_unitario decimal(10,2) [not null]
+
+  indexes {
+    insumo_id [name: 'fk_item_insumo_insumo']
+    (consulta_id, insumo_id) [unique, name: 'uq_item_insumo']
+  }
+
+  Note: '''
+  Módulo Pacientes (migración 006).
+  CHECK ck_item_insumo_cantidad: (cantidad > 0)
+  CHECK ck_item_insumo_costo: (costo_unitario >= 0)
+  '''
+}
+
+Table item_producto_consulta {
+  id "int unsigned" [pk, increment]
+  consulta_id "int unsigned" [not null]
+  producto_id "int unsigned" [not null]
+  cantidad "int unsigned" [not null]
+  precio_unitario decimal(10,2) [not null]
+
+  indexes {
+    producto_id [name: 'fk_item_producto_producto']
+    (consulta_id, producto_id) [unique, name: 'uq_item_producto']
+  }
+
+  Note: '''
+  Módulo Pacientes (migración 006).
+  CHECK ck_item_producto_cantidad: (cantidad > 0)
+  CHECK ck_item_producto_precio: (precio_unitario >= 0)
+  '''
+}
+
+Table lote_insumo {
+  id "int unsigned" [pk, increment]
+  insumo_id "int unsigned" [not null]
+  numero "int unsigned" [not null]
+  codigo varchar(40)
+  vencimiento date
+  stock "int unsigned" [not null, default: 0]
+  creado_en datetime [not null]
+
+  indexes {
+    (insumo_id, vencimiento) [name: 'ix_lote_insumo_vencimiento']
+    (insumo_id, numero) [unique, name: 'uq_lote_insumo_numero']
+  }
+
+  Note: '''
+  Módulo Inventario (migración 029).
+  '''
+}
+
+Table lote_producto {
+  id "int unsigned" [pk, increment]
+  producto_id "int unsigned" [not null]
+  numero "int unsigned" [note: 'L1, L2, L3… de cada producto']
+  codigo varchar(40) [note: 'Número de lote del fabricante (opcional)']
+  vencimiento date
+  stock "int unsigned" [not null, default: 0]
+  creado_en datetime [not null]
+
+  indexes {
+    (producto_id, vencimiento) [name: 'ix_lote_producto_vencimiento']
+    (producto_id, numero) [unique, name: 'uq_lote_producto_numero']
+  }
+
+  Note: '''
+  Módulo Inventario (migración 028).
+  '''
+}
+
+Table mascota {
+  id "int unsigned" [pk, increment]
+  duenio_id "int unsigned" [not null]
+  nombre varchar(80) [not null]
+  especie mascota_especie [not null]
+  raza varchar(80)
+  fecha_nacimiento date
+  peso_kg decimal(5,2)
+  foto mediumblob
+  foto_tipo varchar(20)
+  activo boolean [not null, default: true]
+
+  indexes {
+    (duenio_id, activo) [name: 'ix_mascota_duenio']
+  }
+
+  Note: '''
+  Módulo Pacientes (migración 004).
+  CHECK ck_mascota_peso: ((peso_kg is null) or (peso_kg > 0))
+  '''
+}
+
+Table migracion {
+  archivo varchar(255) [pk]
+  aplicada_en datetime [not null, default: `CURRENT_TIMESTAMP`]
+
+  Note: '''
+  La lleva el migrador (base/migrar.php del Gateway): qué migraciones ya se aplicaron.
+  '''
+}
+
+Table movimiento_inventario {
+  id "int unsigned" [pk, increment]
+  producto_id "int unsigned"
+  lote_id "int unsigned"
+  insumo_id "int unsigned"
+  lote_insumo_id "int unsigned"
+  tipo movimiento_inventario_tipo [not null]
+  cantidad "int unsigned" [not null]
+  motivo movimiento_inventario_motivo [not null]
+  usuario_id "int unsigned"
+  id_operacion char(36)
+  fecha datetime [not null, default: `CURRENT_TIMESTAMP`]
+
+  indexes {
+    insumo_id [name: 'fk_movimiento_insumo']
+    usuario_id [name: 'fk_movimiento_usuario']
+    lote_id [name: 'ix_movimiento_lote']
+    lote_insumo_id [name: 'ix_movimiento_lote_insumo']
+    (producto_id, fecha) [name: 'ix_movimiento_producto']
+    id_operacion [unique, name: 'uq_movimiento_operacion']
+  }
+
+  Note: '''
+  Módulo Inventario (migración 002).
+  CHECK ck_movimiento_cantidad: (cantidad > 0)
+  CHECK ck_movimiento_destino: ((producto_id is null) <> (insumo_id is null))
+  '''
+}
+
+Table notificacion {
+  id "int unsigned" [pk, increment]
+  usuario_id "int unsigned" [not null]
+  tipo notificacion_tipo [not null]
+  canal notificacion_canal [not null]
+  mensaje varchar(500) [not null]
+  fecha_programada datetime [not null]
+  enviada_en datetime
+  intentos "tinyint unsigned" [not null, default: 0]
+  ultimo_error varchar(100)
+  leida boolean [not null, default: false]
+  id_operacion varchar(100) [not null]
+  creada_en datetime [not null]
+
+  indexes {
+    (canal, enviada_en, fecha_programada) [name: 'ix_notificacion_pendientes']
+    (usuario_id, leida, fecha_programada) [name: 'ix_notificacion_usuario']
+    id_operacion [unique, name: 'uq_notificacion_operacion']
+  }
+
+  Note: '''
+  Módulo Backend (migración 008).
+  '''
+}
+
+Table pago {
+  id "int unsigned" [pk, increment]
+  factura_compra_id "int unsigned" [not null]
+  monto decimal(10,2) [not null]
+  id_externo varchar(64)
+  estado pago_estado [not null, default: 'PENDIENTE']
+  fecha datetime [not null]
+
+  indexes {
+    factura_compra_id [name: 'fk_pago_factura']
+    id_externo [unique, name: 'uq_pago_externo']
+  }
+
+  Note: '''
+  Módulo Inventario (migración 010).
+  CHECK ck_pago_monto: (monto >= 0)
+  '''
+}
+
+Table plan_sanitario {
+  id "int unsigned" [pk, increment]
+  especie plan_sanitario_especie [not null]
+  tipo plan_sanitario_tipo [not null]
+  nombre varchar(100) [not null]
+  aplicacion plan_sanitario_aplicacion [not null]
+  orden "smallint unsigned" [not null, default: 1]
+  edad_inicio_semanas "smallint unsigned" [not null]
+  repetir_cada_meses "smallint unsigned"
+  automatico boolean [not null, default: true]
+
+  indexes {
+    (especie, edad_inicio_semanas) [name: 'ix_plan_especie']
+  }
+
+  Note: '''
+  Módulo Pacientes (migración 005).
+  CHECK ck_plan_repeticion: ((repetir_cada_meses is null) or (repetir_cada_meses > 0))
+  '''
+}
+
+Table postulacion {
+  id "int unsigned" [pk, increment]
+  adopcion_id "int unsigned" [not null]
+  cliente_id "int unsigned" [not null]
+  tipo_vivienda varchar(60) [not null]
+  otras_mascotas varchar(255) [not null]
+  tiempo_disponible varchar(120) [not null]
+  estado postulacion_estado [not null, default: 'PENDIENTE']
+  fecha datetime [not null]
+
+  indexes {
+    (cliente_id, fecha) [name: 'ix_postulacion_cliente']
+    (adopcion_id, cliente_id) [unique, name: 'uq_postulacion_adopcion_cliente']
+  }
+
+  Note: '''
+  Módulo Adopciones (migración 007).
+  '''
+}
+
+Table producto {
+  id "int unsigned" [pk, increment]
+  nombre varchar(120) [not null]
+  descripcion text
+  precio decimal(10,2) [not null]
+  huellitas "int unsigned"
+  stock "int unsigned" [not null, default: 0]
+  categoria producto_categoria [not null]
+  especie_destino producto_especie_destino [not null]
+  etapa_vida producto_etapa_vida [not null, default: 'TODAS']
+  peso_kg decimal(6,2)
+  fecha_vencimiento date
+  vence boolean [not null, default: true]
+  imagen mediumblob
+  imagen_tipo varchar(20)
+  activo boolean [not null, default: true]
+
+  indexes {
+    (activo, categoria, especie_destino, nombre) [name: 'ix_producto_catalogo']
+  }
+
+  Note: '''
+  Módulo Inventario (migración 002).
+  '''
+}
+
+Table promocion {
+  id "int unsigned" [pk, increment]
+  producto_id "int unsigned" [not null]
+  lote_id "int unsigned"
+  porcentaje "tinyint unsigned" [not null]
+  hasta date [not null]
+  creada_en datetime [not null]
+  creada_por "int unsigned" [not null]
+  terminada_en datetime
+  sin_terminar tinyint [note: 'Columna generada: if((terminada_en is null),1,NULL)']
+
+  indexes {
+    lote_id [name: 'fk_promocion_lote']
+    creada_por [name: 'fk_promocion_usuario']
+    (terminada_en, hasta) [name: 'ix_promocion_vigentes']
+    (producto_id, sin_terminar) [unique, name: 'ux_promocion_una_por_producto']
+  }
+
+  Note: '''
+  Módulo Inventario (migración 016).
+  CHECK ck_promocion_porcentaje: (porcentaje between 5 and 90)
+  '''
+}
+
+Table promocion_franja {
+  id "int unsigned" [pk, increment]
+  dia_semana "tinyint unsigned" [not null]
+  franja promocion_franja_franja [not null]
+  porcentaje "tinyint unsigned" [not null]
+  hasta date [not null]
+  creada_en datetime [not null]
+  creada_por "int unsigned" [not null]
+  terminada_en datetime
+  sin_terminar tinyint [note: 'Columna generada: if((terminada_en is null),1,NULL)']
+
+  indexes {
+    creada_por [name: 'fk_promocion_franja_usuario']
+    (terminada_en, hasta) [name: 'ix_promocion_franja_vigentes']
+    (dia_semana, franja, sin_terminar) [unique, name: 'ux_promocion_franja_una']
+  }
+
+  Note: '''
+  Módulo Pacientes (migración 020).
+  CHECK ck_promocion_franja_dia: (dia_semana between 1 and 6)
+  CHECK ck_promocion_franja_porcentaje: (porcentaje between 5 and 90)
+  '''
+}
+
+Table publicacion {
+  id "int unsigned" [pk, increment]
+  rescatista_id "int unsigned" [not null]
+  mascota_id "int unsigned" [not null]
+  titulo varchar(120) [not null]
+  descripcion text [not null]
+  foto mediumblob [not null]
+  foto_tipo varchar(20) [not null]
+  estado_moderacion publicacion_estado_moderacion [not null, default: 'PENDIENTE']
+  motivo_rechazo varchar(255)
+  activa boolean [not null, default: true]
+  creada_en datetime [not null]
+  vigente tinyint [note: 'Columna generada: if(((activa = 1) and (estado_moderacion <> \'RECHAZADA\')),1,NULL)']
+
+  indexes {
+    (estado_moderacion, activa) [name: 'ix_publicacion_moderacion']
+    (rescatista_id, activa) [name: 'ix_publicacion_rescatista']
+    (mascota_id, vigente) [unique, name: 'uq_publicacion_mascota_vigente']
+  }
+
+  Note: '''
+  Módulo Adopciones (migración 007).
+  CHECK ck_publicacion_motivo: (((estado_moderacion = 'RECHAZADA') and (motivo_rechazo is not null)) or ((estado_moderacion <> 'RECHAZADA') and (motivo_rechazo is null)))
+  '''
+}
+
+Table publicacion_rechazo {
+  id "int unsigned" [pk, increment]
+  publicacion_id "int unsigned" [not null]
+  motivo varchar(255) [not null]
+  rechazada_en datetime [not null]
+  rechazada_por "int unsigned"
+
+  indexes {
+    rechazada_por [name: 'fk_publicacion_rechazo_veterinaria']
+    rechazada_en [name: 'ix_publicacion_rechazo_fecha']
+    (publicacion_id, rechazada_en) [name: 'ix_publicacion_rechazo_publicacion']
+  }
+
+  Note: '''
+  Módulo Adopciones (migración 023).
+  '''
+}
+
+Table resena {
+  id "int unsigned" [pk, increment]
+  autor_id "int unsigned" [not null]
+  estrellas "tinyint unsigned" [not null]
+  texto varchar(1000) [not null]
+  creada_en datetime [not null]
+  respuesta varchar(1000)
+  respondida_en datetime
+  respondida_por "int unsigned"
+
+  indexes {
+    autor_id [name: 'fk_resena_autor']
+    respondida_por [name: 'fk_resena_respondida_por']
+    creada_en [name: 'ix_resena_creada']
+    (estrellas, creada_en) [name: 'ix_resena_estrellas']
+  }
+
+  Note: '''
+  Módulo Backend (migración 019).
+  CHECK ck_resena_estrellas: (estrellas between 1 and 5)
+  '''
+}
+
+Table turno {
+  id "int unsigned" [pk, increment]
+  mascota_id "int unsigned" [not null]
+  veterinario_id "int unsigned" [not null]
+  fecha date [not null]
+  hora time [not null]
+  motivo turno_motivo [not null]
+  estado turno_estado [not null, default: 'PROGRAMADO']
+  precio_consulta decimal(10,2)
+  descuento "tinyint unsigned"
+  promocion_franja_id "int unsigned"
+  ocupa_horario tinyint [note: 'Columna generada: if((estado = \'CANCELADO\'),NULL,1)']
+
+  indexes {
+    promocion_franja_id [name: 'fk_turno_promocion_franja']
+    (fecha, hora) [name: 'ix_turno_agenda']
+    (mascota_id, fecha) [name: 'ix_turno_mascota']
+    (veterinario_id, fecha, hora, ocupa_horario) [unique, name: 'uq_turno_veterinario_horario']
+  }
+
+  Note: '''
+  Módulo Pacientes (migración 004).
+  CHECK ck_turno_descuento: ((descuento is null) or (descuento between 5 and 90))
+  '''
+}
+
+Table turno_motivo {
+  id "int unsigned" [pk, increment]
+  turno_id "int unsigned" [not null]
+  motivo turno_motivo_motivo [not null]
+  evento_sanitario_id "int unsigned"
+
+  indexes {
+    evento_sanitario_id [name: 'ix_turno_motivo_evento']
+    turno_id [name: 'ix_turno_motivo_turno']
+  }
+
+  Note: '''
+  Módulo Pacientes (migración 026).
+  '''
+}
+
+Table usuario {
+  id "int unsigned" [pk, increment]
+  nombre varchar(100) [not null]
+  email varchar(150) [not null]
+  password_hash varchar(255) [not null]
+  telefono varchar(30)
+  rol usuario_rol [not null]
+  organizacion varchar(100)
+  estado_validacion usuario_estado_validacion
+  motivo_rechazo varchar(255)
+  validado_en datetime
+  validado_por "int unsigned"
+  intentos_fallidos "tinyint unsigned" [not null, default: 0]
+  primer_fallo_en datetime
+  bloqueado_hasta datetime
+
+  indexes {
+    validado_por [name: 'fk_usuario_validado_por']
+    email [unique, name: 'uq_usuario_email']
+  }
+
+  Note: '''
+  Módulo Backend (migración 001).
+  CHECK ck_usuario_motivo_rechazo: ((motivo_rechazo is null) or (estado_validacion = 'RECHAZADO'))
+  '''
+}
+
+Table verificacion_whatsapp {
+  id "int unsigned" [pk, increment]
+  proposito verificacion_whatsapp_proposito [not null]
+  telefono char(10) [not null]
+  usuario_id "int unsigned"
+  codigo_hash varchar(255) [not null]
+  intentos "tinyint unsigned" [not null, default: 0]
+  creado_en datetime [not null]
+  vence_en datetime [not null]
+  usado_en datetime
+
+  indexes {
+    (telefono, proposito, creado_en) [name: 'ix_verificacion_telefono']
+    (usuario_id, proposito, creado_en) [name: 'ix_verificacion_usuario']
+  }
+
+  Note: '''
+  Módulo Backend (migración 019).
+  CHECK ck_verificacion_usuario: ((proposito = 'CAMBIO') = (usuario_id is not null))
+  '''
+}
+
+// ---------- Enums (columnas ENUM de MySQL) ----------
+
+Enum adopcion_estado {
+  "PUBLICADA"
+  "CON_POSTULANTES"
+  "ADOPTANTE_ELEGIDO"
+  "CHEQUEO_PENDIENTE"
+  "FINALIZADA"
+  "CANCELADA"
+}
+
+Enum carrito_estado {
+  "ABIERTO"
+  "CONFIRMADO"
+  "PAGADO"
+  "RETIRADO"
+  "CANCELADO"
+}
+
+Enum consulta_estado {
+  "ABIERTA"
+  "FINALIZADA"
+}
+
+Enum evento_sanitario_tipo {
+  "VACUNA"
+  "DESPARASITACION"
+}
+
+Enum factura_compra_estado {
+  "PENDIENTE_PAGO"
+  "PAGADA"
+  "ENTREGADA"
+  "CANCELADA"
+}
+
+Enum factura_compra_motivo_cancelacion {
+  "COMPRADOR"
+  "SIN_PAGO"
+  "VENCIDA"
+}
+
+Enum factura_compra_reintegro_estado {
+  "PENDIENTE"
+  "HECHO"
+}
+
+Enum factura_consulta_estado {
+  "PENDIENTE_PAGO"
+  "PAGADA"
+}
+
+Enum insumo_aplicacion {
+  "SEXTUPLE"
+  "TRIPLE_FELINA"
+  "ANTIRRABICA"
+  "TOS_PERRERAS"
+  "LEUCEMIA_FELINA"
+  "ANTIPARASITARIO"
+}
+
+Enum insumo_estado {
+  "DISPONIBLE"
+  "EN_FALTA"
+  "YA_PEDIDO"
+}
+
+Enum mascota_especie {
+  "PERRO"
+  "GATO"
+  "OTRO"
+}
+
+Enum movimiento_inventario_tipo {
+  "ENTRADA"
+  "SALIDA"
+  "AJUSTE"
+}
+
+Enum movimiento_inventario_motivo {
+  "CARGA_VETERINARIO"
+  "CONSULTA"
+  "VENTA"
+  "AJUSTE"
+  "VENTA_CANCELADA"
+}
+
+Enum notificacion_tipo {
+  "VACUNA"
+  "CONTROL_ADOPCION"
+  "STOCK_BAJO"
+  "PROMOCION"
+  "CUENTA"
+  "POSTULACION"
+  "COMPRA"
+  "RESENA"
+  "TURNO"
+}
+
+Enum notificacion_canal {
+  "WEB"
+  "WHATSAPP"
+}
+
+Enum pago_estado {
+  "PENDIENTE"
+  "APROBADO"
+  "RECHAZADO"
+  "DEVUELTO"
+}
+
+Enum plan_sanitario_especie {
+  "PERRO"
+  "GATO"
+  "OTRO"
+}
+
+Enum plan_sanitario_tipo {
+  "VACUNA"
+  "DESPARASITACION"
+}
+
+Enum plan_sanitario_aplicacion {
+  "SEXTUPLE"
+  "TRIPLE_FELINA"
+  "ANTIRRABICA"
+  "TOS_PERRERAS"
+  "LEUCEMIA_FELINA"
+  "ANTIPARASITARIO"
+}
+
+Enum postulacion_estado {
+  "PENDIENTE"
+  "ELEGIDA"
+  "RECHAZADA"
+  "CANCELADA"
+}
+
+Enum producto_categoria {
+  "MEDICAMENTO"
+  "ALIMENTO"
+  "ACCESORIO"
+}
+
+Enum producto_especie_destino {
+  "PERRO"
+  "GATO"
+  "TODAS"
+}
+
+Enum producto_etapa_vida {
+  "CACHORRO"
+  "ADULTO"
+  "SENIOR"
+  "TODAS"
+}
+
+Enum promocion_franja_franja {
+  "MANIANA"
+  "TARDE"
+}
+
+Enum publicacion_estado_moderacion {
+  "PENDIENTE"
+  "APROBADA"
+  "RECHAZADA"
+}
+
+Enum turno_motivo {
+  "CONSULTA"
+  "VACUNACION"
+  "CHEQUEO_ADOPCION"
+  "DESPARASITACION"
+  "CASTRACION"
+  "CIRUGIA"
+  "CONTROL"
+  "URGENCIA"
+}
+
+Enum turno_estado {
+  "PROGRAMADO"
+  "EN_ATENCION"
+  "ATENDIDO"
+  "CANCELADO"
+  "AUSENTE"
+}
+
+Enum turno_motivo_motivo {
+  "CONSULTA"
+  "VACUNACION"
+  "CHEQUEO_ADOPCION"
+  "DESPARASITACION"
+  "CASTRACION"
+  "CIRUGIA"
+  "CONTROL"
+  "URGENCIA"
+}
+
+Enum usuario_rol {
+  "CLIENTE"
+  "VETERINARIO"
+  "RESCATISTA"
+}
+
+Enum usuario_estado_validacion {
+  "PENDIENTE"
+  "APROBADO"
+  "RECHAZADO"
+}
+
+Enum verificacion_whatsapp_proposito {
+  "REGISTRO"
+  "CAMBIO"
+}
+
+// ---------- Claves foráneas ----------
+
+Ref fk_adopcion_adoptante: adopcion.adoptante_id > usuario.id
+Ref fk_adopcion_publicacion: adopcion.publicacion_id > publicacion.id
+Ref fk_adopcion_turno_chequeo: adopcion.turno_chequeo_id > turno.id
+Ref fk_carrito_cliente: carrito.cliente_id > usuario.id
+Ref fk_configuracion_usuario: configuracion.actualizado_por > usuario.id
+Ref fk_consulta_turno: consulta.turno_id > turno.id
+Ref fk_evento_consulta: evento_sanitario.consulta_id > consulta.id
+Ref fk_evento_mascota: evento_sanitario.mascota_id > mascota.id
+Ref fk_evento_plan: evento_sanitario.plan_sanitario_id > plan_sanitario.id
+Ref fk_factura_compra_carrito: factura_compra.carrito_id > carrito.id
+Ref fk_factura_compra_entrega: factura_compra.entregada_por > usuario.id
+Ref fk_factura_consulta: factura_consulta.consulta_id > consulta.id
+Ref fk_item_carrito_carrito: item_carrito.carrito_id > carrito.id
+Ref fk_item_carrito_producto: item_carrito.producto_id > producto.id
+Ref fk_item_insumo_consulta: item_insumo_consulta.consulta_id > consulta.id
+Ref fk_item_insumo_insumo: item_insumo_consulta.insumo_id > insumo.id
+Ref fk_item_producto_consulta: item_producto_consulta.consulta_id > consulta.id
+Ref fk_item_producto_producto: item_producto_consulta.producto_id > producto.id
+Ref fk_lote_insumo: lote_insumo.insumo_id > insumo.id
+Ref fk_lote_producto: lote_producto.producto_id > producto.id
+Ref fk_mascota_duenio: mascota.duenio_id > usuario.id
+Ref fk_movimiento_insumo: movimiento_inventario.insumo_id > insumo.id
+Ref fk_movimiento_lote: movimiento_inventario.lote_id > lote_producto.id
+Ref fk_movimiento_lote_insumo: movimiento_inventario.lote_insumo_id > lote_insumo.id
+Ref fk_movimiento_producto: movimiento_inventario.producto_id > producto.id
+Ref fk_movimiento_usuario: movimiento_inventario.usuario_id > usuario.id
+Ref fk_notificacion_usuario: notificacion.usuario_id > usuario.id
+Ref fk_pago_factura: pago.factura_compra_id > factura_compra.id
+Ref fk_postulacion_adopcion: postulacion.adopcion_id > adopcion.id
+Ref fk_postulacion_cliente: postulacion.cliente_id > usuario.id
+Ref fk_promocion_lote: promocion.lote_id > lote_producto.id
+Ref fk_promocion_producto: promocion.producto_id > producto.id
+Ref fk_promocion_usuario: promocion.creada_por > usuario.id
+Ref fk_promocion_franja_usuario: promocion_franja.creada_por > usuario.id
+Ref fk_publicacion_mascota: publicacion.mascota_id > mascota.id
+Ref fk_publicacion_rescatista: publicacion.rescatista_id > usuario.id
+Ref fk_publicacion_rechazo_publicacion: publicacion_rechazo.publicacion_id > publicacion.id
+Ref fk_publicacion_rechazo_veterinaria: publicacion_rechazo.rechazada_por > usuario.id
+Ref fk_resena_autor: resena.autor_id > usuario.id
+Ref fk_resena_respondida_por: resena.respondida_por > usuario.id
+Ref fk_turno_mascota: turno.mascota_id > mascota.id
+Ref fk_turno_promocion_franja: turno.promocion_franja_id > promocion_franja.id
+Ref fk_turno_veterinario: turno.veterinario_id > usuario.id
+Ref fk_turno_motivo_evento: turno_motivo.evento_sanitario_id > evento_sanitario.id
+Ref fk_turno_motivo_turno: turno_motivo.turno_id > turno.id
+Ref fk_usuario_validado_por: usuario.validado_por > usuario.id
+Ref fk_verificacion_usuario: verificacion_whatsapp.usuario_id > usuario.id
+
+// ---------- Tablas por módulo ----------
+
+TableGroup Backend {
+  configuracion
+  notificacion
+  resena
+  usuario
+  verificacion_whatsapp
+}
+
+TableGroup Inventario {
+  carrito
+  factura_compra
+  insumo
+  item_carrito
+  lote_insumo
+  lote_producto
+  movimiento_inventario
+  pago
+  producto
+  promocion
+}
+
+TableGroup Pacientes {
+  consulta
+  evento_sanitario
+  factura_consulta
+  item_insumo_consulta
+  item_producto_consulta
+  mascota
+  plan_sanitario
+  promocion_franja
+  turno
+  turno_motivo
+}
+
+TableGroup Adopciones {
+  adopcion
+  postulacion
+  publicacion
+  publicacion_rechazo
+}
+
+TableGroup Migraciones {
+  migracion
+}
+
+// Vista v_turnos_atendidos (no es tabla; la lee Reportes):
+// select t.id AS turno_id,t.fecha AS fecha,t.hora AS hora,t.motivo AS motivo,t.mascota_id AS mascota_id,t.veterinario_id AS veterinario_id,c.id AS consulta_id,c.diagnostico AS diagnostico,c.finalizada_en AS finalizada_en,(select count(0) from item_insumo_consulta i where (i.consulta_id = c.id)) AS cantidad_insumos,(select count(0) from item_producto_consulta p where (p.consulta_id = c.id)) AS cantidad_productos,f.numero AS factura_numero,f.subtotal_base AS subtotal_base,f.subtotal_insumos AS subtotal_insumos,f.subtotal_productos AS subtotal_productos,f.total AS total,f.estado AS factura_estado from ((turno t join consulta c on(((c.turno_id = t.id) and (c.estado = 'FINALIZADA')))) join factura_consulta f on((f.consulta_id = c.id))) where (t.estado = 'ATENDIDO')

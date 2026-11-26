@@ -1,0 +1,664 @@
+@startuml HuellaVet_modelo_de_objetos
+' HuellaVet — modelo de objetos (diagrama de clases), Entrega 5 final, al 26/11/2026.
+' Se ve en https://www.plantuml.com/plantuml, en VS Code (extensión PlantUML) o en draw.io
+' (Arrange > Insert > Advanced > PlantUML). La misma información está en Mermaid en MODELO_DE_OBJETOS.md.
+' «service»: clase con las reglas (sin estado propio); los métodos {static} no usan la base.
+skinparam classAttributeIconSize 0
+skinparam packageStyle rectangle
+skinparam shadowing false
+hide empty members
+
+package "Backend" {
+  class Cliente {
+    -id : int
+    -nombre : string
+    -email : string
+    -passwordHash : string
+    -telefono : string
+    --
+    +iniciarSesion(email, password) : bool
+    +registrarMascota(datos) : Mascota
+    +verHistorial(mascota) : Consulta[]
+    +verCalendario(mascota) : EventoSanitario[]
+    +verTurnos() : Turno[]
+    +postularse(adopcion, formulario) : Postulacion
+    +cancelarPostulacion(postulacion) : void
+    +agregarAlCarrito(producto, cantidad) : void
+    +publicarResena(estrellas, texto) : Resena
+  }
+  class Veterinario {
+    -id : int
+    -nombre : string
+    -email : string
+    -passwordHash : string
+    --
+    +iniciarSesion(email, password) : bool
+    +registrarTurno(mascota, fecha, hora, motivos) : Turno
+    +reprogramarTurno(turno, fecha, hora) : void
+    +atender(turno) : Consulta
+    +cargarCalendario(mascota, plan, fecha) : EventoSanitario
+    +validarRescatista(rescatista, aprobado, motivo) : void
+    +moderar(publicacion, aprobada, motivo) : void
+    +completarAdopcion(adopcion) : void
+    +cargarStock(item, cantidad, lote) : void
+    +retirarStock(item, cantidad, lote) : void
+    +constatarEntrega(compra) : void
+    +publicitarProducto(lote, porcentaje, hasta) : Promocion
+    +publicitarFranja(diaSemana, franja, porcentaje, hasta) : PromocionFranja
+    +responderResena(resena, respuesta) : void
+    +configurar(parametros) : void
+  }
+  class Rescatista {
+    -id : int
+    -nombre : string
+    -email : string
+    -passwordHash : string
+    -telefono : string
+    -organizacion : string
+    -estadoValidacion : EstadoValidacion
+    -motivoRechazo : string
+    --
+    +iniciarSesion(email, password) : bool
+    +aprobar() : void
+    +rechazar(motivo) : void
+    +puedePublicar() : bool
+    +publicar(mascota, titulo, descripcion, foto) : Publicacion
+    +elegirAdoptante(postulacion) : void
+  }
+  class VerificacionWhatsApp {
+    -id : int
+    -proposito : PropositoVerificacion
+    -telefono : string
+    -codigoHash : string
+    -intentos : int
+    -venceEn : DateTime
+    -usadoEn : DateTime
+    --
+    +generarCodigo() : string
+    +verificar(codigo) : bool
+    +estaVencido() : bool
+  }
+  class CatalogoConfiguracion {
+    {static} +definiciones() : array
+    {static} +validar(valores, actuales) : array
+    {static} +armarParametros(filasGuardadas) : array
+  }
+  class Resena {
+    -id : int
+    -estrellas : int
+    -texto : string
+    -creadaEn : DateTime
+    -respuesta : string
+    -respondidaEn : DateTime
+    --
+    +publicar() : void
+    +responder(texto, veterinarioId) : void
+  }
+  class Notificacion {
+    -id : int
+    -tipo : TipoNotificacion
+    -canal : Canal
+    -mensaje : string
+    -fechaProgramada : DateTime
+    -enviadaEn : DateTime
+    -intentos : int
+    -ultimoError : string
+    -leida : bool
+    -idOperacion : string
+    --
+    +enviar() : bool
+    +marcarLeida() : void
+  }
+}
+
+package "Pacientes" {
+  class Mascota {
+    -id : int
+    -nombre : string
+    -especie : EspecieMascota
+    -raza : string
+    -fechaNacimiento : Date
+    -pesoKg : float
+    -foto : string
+    -activo : bool
+    --
+    +edad() : int
+    +historialClinico() : Consulta[]
+    +vacunasAlDia() : bool
+    +transferirA(nuevoDuenioId) : void
+  }
+  class PlanSanitario {
+    -id : int
+    -especie : EspecieMascota
+    -tipo : TipoEventoSanitario
+    -nombre : string
+    -aplicacion : Aplicacion
+    -orden : int
+    -edadInicioSemanas : int
+    -repetirCadaMeses : int
+  }
+  class EventoSanitario {
+    -id : int
+    -tipo : TipoEventoSanitario
+    -nombre : string
+    -fechaProgramada : Date
+    -fechaAplicada : Date
+    --
+    +estado(hoy) : EstadoEvento
+    +marcarAplicado(fecha, consultaId) : void
+  }
+  class CalendarioSanitario <<service>> {
+    +agregar(mascota, plan, fecha) : EventoSanitario
+    +marcarDada(evento, fecha) : void
+    +cambiarFecha(evento, fecha) : void
+    +quitar(evento) : void
+    +eventoParaTurno(mascota, plan, motivo) : EventoSanitario
+    +controlarIntervalo(mascota, plan, fecha) : string
+    {static} +estadoDe(programada, aplicada, hoy) : EstadoEvento
+    {static} +vacunasAlDia(eventos) : bool
+  }
+  class IntervalosVacunas <<service>> {
+    {static} +dias(aplicacion, refuerzo) : int
+    {static} +conflicto(fecha, aplicadas, dias) : string
+    {static} +fechaMinima(aplicadas, dias) : Date
+  }
+  class Turno {
+    -id : int
+    -fecha : Date
+    -hora : Time
+    -motivo : MotivoTurno
+    -estado : EstadoTurno
+    -precioConsulta : decimal
+    -descuento : int
+    --
+    +iniciarAtencion() : Consulta
+    +reprogramar(fecha, hora) : void
+    +marcarAtendido() : void
+    +cancelar() : void
+    +marcarAusente() : void
+  }
+  class MotivoDeTurno {
+    -id : int
+    -motivo : MotivoTurno
+  }
+  class MotivosTurno <<service>> {
+    {static} +principal(motivos) : MotivoTurno
+    {static} +eventos(motivos) : EventoSanitario[]
+  }
+  class AvisosTurno <<service>> {
+    {static} +asignado(turno) : array
+    {static} +reprogramado(turno, momento) : array
+    {static} +cancelado(turno) : array
+    {static} +enviar(avisos) : int
+  }
+  class HorarioAtencion <<service>> {
+    {static} +actual() : array
+  }
+  class PrecioTurno <<service>> {
+    {static} +precioBase() : decimal
+    {static} +franjaDe(fecha, hora) : array
+    {static} +paraTurno(precioBase, promocion) : array
+    {static} +conDescuento(precio, descuento) : decimal
+  }
+  class PromocionFranja {
+    -id : int
+    -diaSemana : int
+    -franja : FranjaTurno
+    -porcentaje : int
+    -hasta : Date
+    -terminadaEn : DateTime
+    --
+    +precioConDescuento(precioBase) : decimal
+    +terminar() : void
+  }
+  class Consulta {
+    -id : int
+    -diagnostico : string
+    -observaciones : string
+    -valorBase : decimal
+    -estado : EstadoConsulta
+    -finalizadaEn : DateTime
+    --
+    +registrarInsumo(insumo, cantidad) : void
+    +agregarProducto(producto, cantidad) : void
+    +calcularTotal() : decimal
+    +finalizar() : FacturaConsulta
+  }
+  class ItemInsumoConsulta {
+    -cantidad : int
+    -costoUnitario : decimal
+    --
+    +subtotal() : decimal
+  }
+  class ItemProductoConsulta {
+    -cantidad : int
+    -precioUnitario : decimal
+    --
+    +subtotal() : decimal
+  }
+  class FacturaConsulta {
+    -numero : string
+    -fecha : DateTime
+    -subtotalBase : decimal
+    -subtotalInsumos : decimal
+    -subtotalProductos : decimal
+    -total : decimal
+    -estado : EstadoFacturaConsulta
+    --
+    {static} +calcular(valorBase, insumos, productos) : array
+    {static} +numero(id) : string
+  }
+}
+
+package "Adopciones" {
+  class Publicacion {
+    -id : int
+    -titulo : string
+    -descripcion : string
+    -foto : string
+    -estadoModeracion : EstadoModeracion
+    -motivoRechazo : string
+    -activa : bool
+    --
+    +aprobar() : Adopcion
+    +rechazar(motivo) : void
+    +editar(datos) : void
+    +darDeBaja() : void
+  }
+  class PublicacionRechazo {
+    -id : int
+    -motivo : string
+    -rechazadaEn : DateTime
+  }
+  class Adopcion {
+    -id : int
+    -estado : EstadoAdopcion
+    -fechaInicio : DateTime
+    -fechaFin : DateTime
+    --
+    +recibirPostulacion(postulacion) : void
+    +elegirAdoptante(postulacion) : void
+    +asignarTurnoChequeo(turno) : void
+    +completar() : void
+    +cancelar() : void
+  }
+  class Postulacion {
+    -id : int
+    -fecha : DateTime
+    -tipoVivienda : string
+    -otrasMascotas : string
+    -tiempoDisponible : string
+    -estado : EstadoPostulacion
+    --
+    +elegir() : void
+    +rechazar() : void
+    +cancelar() : void
+  }
+  class AvisosAdopcion <<service>> {
+    {static} +publicacionModerada(publicacion, motivoRechazo) : array
+    {static} +postulacionNueva(postulacion) : array
+    {static} +postulacionCancelada(postulacion) : array
+    {static} +postulacionElegida(postulacion) : array
+    {static} +adopcionFinalizada(adopcion) : array
+  }
+}
+
+package "Inventario" {
+  class Producto {
+    -id : int
+    -nombre : string
+    -descripcion : string
+    -precio : decimal
+    -stock : int
+    -categoria : Categoria
+    -especieDestino : EspecieDestino
+    -etapaVida : EtapaVida
+    -fechaVencimiento : Date
+    -vence : bool
+    -activo : bool
+    --
+    +stockVendible() : int
+    +aLaVenta() : bool
+    +stockBajo(limite) : bool
+  }
+  class LoteProducto {
+    -id : int
+    -numero : int
+    -codigo : string
+    -vencimiento : Date
+    -stock : int
+    --
+    +nombre() : string
+    +vencido(hoy) : bool
+  }
+  class Insumo {
+    -id : int
+    -nombre : string
+    -aplicacion : Aplicacion
+    -stock : int
+    -fechaVencimiento : Date
+    -vence : bool
+    -costo : decimal
+    -estado : EstadoInsumo
+    -activo : bool
+    --
+    +estado() : EstadoInsumo
+    +sinVencer() : int
+    +stockBajo() : bool
+    +marcarPedido() : bool
+  }
+  class LoteInsumo {
+    -id : int
+    -numero : int
+    -codigo : string
+    -vencimiento : Date
+    -stock : int
+    --
+    +nombre() : string
+    +vencido(hoy) : bool
+  }
+  class Lotes <<service>> {
+    +paraCargar(item, vence, lote, nuevo) : Lote
+    +sacar(item, cantidad, primero, conVencidos) : array
+    +retirar(item, cantidad, lote) : array
+    +editar(item, lote, datos) : bool
+    +sincronizar(item) : void
+    {static} +validarNuevo(datos, hoy, vence) : array
+    {static} +nombre(numero, codigo) : string
+  }
+  class MovimientoInventario {
+    -id : int
+    -fecha : DateTime
+    -tipo : TipoMovimiento
+    -cantidad : int
+    -motivo : MotivoMovimiento
+    -idOperacion : string
+  }
+  class Promocion {
+    -id : int
+    -porcentaje : int
+    -hasta : Date
+    -terminadaEn : DateTime
+    --
+    {static} +cantidadConDescuento(cantidad, quedan) : int
+    {static} +subtotal(cantidad, precio, conDescuento, precioPromocion) : decimal
+    {static} +validar(datos, hoy, vencimientoLote) : array
+    +terminar() : void
+  }
+  class Carrito {
+    -id : int
+    -estado : EstadoCarrito
+    --
+    +agregar(producto, cantidad) : void
+    +cambiarCantidad(producto, cantidad) : void
+    +quitar(producto) : void
+    +calcularTotal() : decimal
+    +confirmar() : Compra
+  }
+  class ItemCarrito {
+    -cantidad : int
+    -precioUnitario : decimal
+    -cantidadPromocion : int
+    -precioPromocion : decimal
+    --
+    +subtotal() : decimal
+  }
+  class Compra {
+    -numero : string
+    -fecha : DateTime
+    -pagarAntesDe : DateTime
+    -retirarHasta : Date
+    -total : decimal
+    -estado : EstadoFacturaCompra
+    -motivoCancelacion : MotivoCancelacion
+    -reintegroPorcentaje : int
+    -reintegroMonto : decimal
+    -reintegroEstado : EstadoReintegro
+    --
+    {static} +pagarAntesDe(fecha) : DateTime
+    {static} +retirarHasta(fecha) : Date
+    {static} +politicaDeReintegro() : array
+    {static} +numero(id) : string
+  }
+  class Pago {
+    -id : int
+    -monto : decimal
+    -idExterno : string
+    -estado : EstadoPago
+    --
+    +confirmar() : void
+    +rechazar() : void
+    +devolver() : void
+  }
+}
+
+package "Reportes" {
+  class MotorRecomendaciones <<service>> {
+    {static} +ejecutarDiario() : array
+    {static} +recordarCalendarioSanitario(hoy, ahora, semanaIso, conteo) : void
+    {static} +revisarControlesAdopcion(hoy, ahora, conteo) : void
+    {static} +revisarStockBajo(hoy, ahora, conteo) : void
+    {static} +revisarVencimientos(ahora, semanaIso, conteo) : void
+    {static} +revisarFranjasConPocosTurnos() : array
+  }
+  class LotesPorVencer <<service>> {
+    {static} +descuento(diasRestantes) : int
+    {static} +sugerencia(lote) : array
+    {static} +vencido(lote) : array
+    {static} +nombre(numero, codigo) : string
+  }
+  class ParametrosMotor <<service>> {
+    {static} +diasLiquidar() : int
+    {static} +limiteStockBajo() : int
+  }
+}
+
+package "Enumeraciones" {
+  enum Rol {
+    CLIENTE
+    VETERINARIO
+    RESCATISTA
+  }
+  enum EstadoValidacion {
+    PENDIENTE
+    APROBADO
+    RECHAZADO
+  }
+  enum PropositoVerificacion {
+    REGISTRO
+    CAMBIO
+  }
+  enum TipoNotificacion {
+    VACUNA
+    CONTROL_ADOPCION
+    STOCK_BAJO
+    PROMOCION
+    CUENTA
+    POSTULACION
+    COMPRA
+    RESENA
+    TURNO
+  }
+  enum Canal {
+    WEB
+    WHATSAPP
+  }
+  enum EspecieMascota {
+    PERRO
+    GATO
+    OTRO
+  }
+  enum TipoEventoSanitario {
+    VACUNA
+    DESPARASITACION
+  }
+  enum EstadoEvento {
+    APLICADO
+    VENCIDO
+    PROXIMO
+    PENDIENTE
+  }
+  enum Aplicacion {
+    SEXTUPLE
+    TRIPLE_FELINA
+    ANTIRRABICA
+    TOS_PERRERAS
+    LEUCEMIA_FELINA
+    ANTIPARASITARIO
+  }
+  enum MotivoTurno {
+    CONSULTA
+    VACUNACION
+    CHEQUEO_ADOPCION
+    DESPARASITACION
+    CASTRACION
+    CIRUGIA
+    CONTROL
+    URGENCIA
+  }
+  enum EstadoTurno {
+    PROGRAMADO
+    EN_ATENCION
+    ATENDIDO
+    CANCELADO
+    AUSENTE
+  }
+  enum FranjaTurno {
+    MANIANA
+    TARDE
+  }
+  enum EstadoConsulta {
+    ABIERTA
+    FINALIZADA
+  }
+  enum EstadoFacturaConsulta {
+    PENDIENTE_PAGO
+    PAGADA
+  }
+  enum EstadoModeracion {
+    PENDIENTE
+    APROBADA
+    RECHAZADA
+  }
+  enum EstadoAdopcion {
+    PUBLICADA
+    CON_POSTULANTES
+    ADOPTANTE_ELEGIDO
+    CHEQUEO_PENDIENTE
+    FINALIZADA
+    CANCELADA
+  }
+  enum EstadoPostulacion {
+    PENDIENTE
+    ELEGIDA
+    RECHAZADA
+    CANCELADA
+  }
+  enum Categoria {
+    MEDICAMENTO
+    ALIMENTO
+    ACCESORIO
+  }
+  enum EspecieDestino {
+    PERRO
+    GATO
+    TODAS
+  }
+  enum EtapaVida {
+    CACHORRO
+    ADULTO
+    SENIOR
+    TODAS
+  }
+  enum EstadoInsumo {
+    DISPONIBLE
+    EN_FALTA
+    YA_PEDIDO
+  }
+  enum TipoMovimiento {
+    ENTRADA
+    SALIDA
+    AJUSTE
+  }
+  enum MotivoMovimiento {
+    CARGA_VETERINARIO
+    CONSULTA
+    VENTA
+    AJUSTE
+    VENTA_CANCELADA
+  }
+  enum EstadoCarrito {
+    ABIERTO
+    CONFIRMADO
+    PAGADO
+    RETIRADO
+    CANCELADO
+  }
+  enum EstadoFacturaCompra {
+    PENDIENTE_PAGO
+    PAGADA
+    ENTREGADA
+    CANCELADA
+  }
+  enum MotivoCancelacion {
+    COMPRADOR
+    SIN_PAGO
+    VENCIDA
+  }
+  enum EstadoReintegro {
+    PENDIENTE
+    HECHO
+  }
+  enum EstadoPago {
+    PENDIENTE
+    APROBADO
+    RECHAZADO
+    DEVUELTO
+  }
+}
+
+Cliente "1" --> "*" Mascota : es dueño de
+Rescatista "1" --> "*" Mascota : tiene a cargo
+Cliente "1" --> "*" Postulacion : se postula
+Cliente "1" --> "*" Carrito : arma
+Cliente "1" --> "*" Resena : escribe
+Rescatista "1" --> "*" Publicacion : publica
+Publicacion "1" --> "*" PublicacionRechazo : historial de rechazos
+Publicacion "1" --> "0..1" Adopcion : abre
+Adopcion "1" --> "*" Postulacion : recibe
+Adopcion "0..1" --> "0..1" Turno : chequeo obligatorio
+Mascota "1" --> "*" Turno : agenda
+Mascota "1" --> "*" EventoSanitario : calendario
+PlanSanitario "1" --> "*" EventoSanitario : programa
+Turno "1" --> "1..*" MotivoDeTurno : motivos
+MotivoDeTurno "*" --> "0..1" EventoSanitario : da la dosis
+PromocionFranja "0..1" --> "*" Turno : aplica descuento
+Turno "1" --> "0..1" Consulta : inicia
+Consulta "1" --> "*" ItemInsumoConsulta : usa
+Consulta "1" --> "*" ItemProductoConsulta : vende
+Consulta "1" --> "1" FacturaConsulta : genera
+ItemInsumoConsulta "*" --> "1" Insumo : refiere a
+ItemProductoConsulta "*" --> "1" Producto : refiere a
+Producto "1" --> "*" LoteProducto : su stock está en
+Insumo "1" --> "*" LoteInsumo : su stock está en
+Producto "1" --> "*" Promocion : tiene
+LoteProducto "1" --> "*" Promocion : descuento de sus unidades
+LoteProducto "1" --> "*" MovimientoInventario : registra
+LoteInsumo "1" --> "*" MovimientoInventario : registra
+Carrito "1" --> "*" ItemCarrito : contiene
+ItemCarrito "*" --> "1" Producto : refiere a
+Carrito "1" --> "0..1" Compra : genera (factura_compra)
+Compra "1" --> "*" Pago : cobra
+Lotes ..> LoteProducto : saca primero el que vence antes
+Lotes ..> LoteInsumo : saca primero el que vence antes
+CalendarioSanitario ..> EventoSanitario : carga y marca
+CalendarioSanitario ..> IntervalosVacunas : días entre dosis
+MotivosTurno ..> MotivoDeTurno : lee
+AvisosTurno ..> Notificacion : «create»
+AvisosAdopcion ..> Notificacion : «create»
+MotorRecomendaciones ..> Notificacion : «create»
+MotorRecomendaciones ..> LotesPorVencer : qué liquidar
+MotorRecomendaciones ..> ParametrosMotor : umbrales
+Veterinario ..> CatalogoConfiguracion : configura
+
+@enduml
