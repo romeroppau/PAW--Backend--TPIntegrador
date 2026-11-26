@@ -14,6 +14,7 @@ class CatalogoConfiguracion
     public const GRUPOS = [
         'TURNOS' => 'Turnos',
         'AVISOS' => 'Avisos a los clientes',
+        'VACUNAS' => 'Vacunas',
         'STOCK' => 'Stock y vencimientos',
         'TIENDA' => 'Tienda',
         'CONTACTO' => 'Datos de la veterinaria',
@@ -76,6 +77,64 @@ class CatalogoConfiguracion
             'ayuda' => 'A los cuántos días se le recuerda el segundo control. Tiene que ser después del primero.',
             'tipo' => 'ENTERO', 'defecto' => 90, 'minimo' => 14, 'maximo' => 365, 'unidad' => 'días',
             'usa' => 'Reportes',
+        ],
+        // Vacunas (26/11): los días mínimos entre dos dosis de la misma vacuna o desparasitación. Los lee
+        // Pacientes (IntervalosVacunas) al cargar el calendario, marcar una dosis como dada y sacar o
+        // reprogramar un turno. "Entre dosis": contra cualquier dosis anterior de esa vacuna (la serie de
+        // cachorro). "Refuerzo": entre dos refuerzos anuales.
+        'dias_vacuna_sextuple_dosis' => [
+            'grupo' => 'VACUNAS', 'nombre' => 'Séxtuple: entre dosis',
+            'ayuda' => 'Días mínimos entre dos dosis de la séxtuple (la serie de cachorro: 1.ª, 2.ª y 3.ª).',
+            'tipo' => 'ENTERO', 'defecto' => 21, 'minimo' => 1, 'maximo' => 730, 'unidad' => 'días',
+            'usa' => 'Pacientes',
+        ],
+        'dias_vacuna_sextuple_refuerzo' => [
+            'grupo' => 'VACUNAS', 'nombre' => 'Séxtuple: entre refuerzos anuales',
+            'ayuda' => 'Días mínimos entre un refuerzo anual de la séxtuple y el anterior.',
+            'tipo' => 'ENTERO', 'defecto' => 330, 'minimo' => 1, 'maximo' => 730, 'unidad' => 'días',
+            'usa' => 'Pacientes',
+        ],
+        'dias_vacuna_triple_felina_dosis' => [
+            'grupo' => 'VACUNAS', 'nombre' => 'Triple felina: entre dosis',
+            'ayuda' => 'Días mínimos entre dos dosis de la triple felina (la serie de cachorro).',
+            'tipo' => 'ENTERO', 'defecto' => 21, 'minimo' => 1, 'maximo' => 730, 'unidad' => 'días',
+            'usa' => 'Pacientes',
+        ],
+        'dias_vacuna_triple_felina_refuerzo' => [
+            'grupo' => 'VACUNAS', 'nombre' => 'Triple felina: entre refuerzos anuales',
+            'ayuda' => 'Días mínimos entre un refuerzo anual de la triple felina y el anterior.',
+            'tipo' => 'ENTERO', 'defecto' => 330, 'minimo' => 1, 'maximo' => 730, 'unidad' => 'días',
+            'usa' => 'Pacientes',
+        ],
+        'dias_vacuna_leucemia_felina_dosis' => [
+            'grupo' => 'VACUNAS', 'nombre' => 'Leucemia felina: entre dosis',
+            'ayuda' => 'Días mínimos entre dos dosis de la vacuna de la leucemia felina.',
+            'tipo' => 'ENTERO', 'defecto' => 21, 'minimo' => 1, 'maximo' => 730, 'unidad' => 'días',
+            'usa' => 'Pacientes',
+        ],
+        'dias_vacuna_leucemia_felina_refuerzo' => [
+            'grupo' => 'VACUNAS', 'nombre' => 'Leucemia felina: entre refuerzos anuales',
+            'ayuda' => 'Días mínimos entre un refuerzo anual de la leucemia felina y el anterior.',
+            'tipo' => 'ENTERO', 'defecto' => 330, 'minimo' => 1, 'maximo' => 730, 'unidad' => 'días',
+            'usa' => 'Pacientes',
+        ],
+        'dias_vacuna_antirrabica' => [
+            'grupo' => 'VACUNAS', 'nombre' => 'Antirrábica',
+            'ayuda' => 'Días mínimos entre dos dosis de la antirrábica.',
+            'tipo' => 'ENTERO', 'defecto' => 330, 'minimo' => 1, 'maximo' => 730, 'unidad' => 'días',
+            'usa' => 'Pacientes',
+        ],
+        'dias_vacuna_tos_perreras' => [
+            'grupo' => 'VACUNAS', 'nombre' => 'Tos de las perreras',
+            'ayuda' => 'Días mínimos entre dos dosis de la vacuna de la tos de las perreras.',
+            'tipo' => 'ENTERO', 'defecto' => 330, 'minimo' => 1, 'maximo' => 730, 'unidad' => 'días',
+            'usa' => 'Pacientes',
+        ],
+        'dias_desparasitacion' => [
+            'grupo' => 'VACUNAS', 'nombre' => 'Desparasitación',
+            'ayuda' => 'Días mínimos entre dos desparasitaciones.',
+            'tipo' => 'ENTERO', 'defecto' => 14, 'minimo' => 1, 'maximo' => 730, 'unidad' => 'días',
+            'usa' => 'Pacientes',
         ],
         'limite_stock_bajo' => [
             'grupo' => 'STOCK', 'nombre' => 'Stock bajo',
