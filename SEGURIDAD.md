@@ -43,30 +43,26 @@ Los servicios externos son MercadoPago y WhatsApp. Las tareas programadas las di
   - Un token de servicio es una contraseña larga y aleatoria que identifica a un módulo, no a una persona.
   - No se obtiene de ningún servicio en tiempo de ejecución. El equipo lo genera una sola vez, por ejemplo con `openssl rand -hex 32`, y lo carga en las variables de entorno del módulo que llama y de los módulos que lo reciben (ver Sistema Operativo).
   - El módulo que llama lo envía en el header `X-Servicio-Token`, y el destino lo compara con el suyo. Si falta o no coincide, responde `401`.
-  - **Entrega 4:** hay un solo endpoint interno en uso, `POST /internal/stock/descontar` (Inventario), que Pacientes llama al finalizar una consulta, y un único token, `INTERNAL_TOKEN`. Solo lo reciben los procesos que lo usan (Pacientes, que llama, e Inventario, que lo recibe): el proceso del Gateway y el de Backend arrancan sin él (`env -u INTERNAL_TOKEN` en `docker/iniciar.sh`).
-  - Cuando se sumen los endpoints internos de las próximas entregas, cada módulo que llama va a tener su propio token, y el destino va a responder `403` si ese módulo no tiene permiso para el endpoint.
+  - **Entrega final, lo implementado:** un único token, `INTERNAL_TOKEN`, compartido por los módulos que se llaman entre sí. El proceso del Gateway arranca sin él (`env -u INTERNAL_TOKEN` en `docker/iniciar.sh`). No llegamos a separar un token por módulo (con `403` si ese módulo no tiene permiso para el endpoint): queda como mejora.
   - Los endpoints internos no aceptan el **JWT** de un usuario (ver Aplicación), y los públicos no aceptan tokens de servicio.
 
-  | Destino | Endpoint interno | Quién puede llamarlo |
+  | Destino | Endpoint interno | Quién lo llama |
   |---|---|---|
-  | Inventario | `POST /internal/stock/descontar` | Pacientes |
-  | Backend | `POST /internal/huellitas/acreditar` | Pacientes, Inventario, Adopciones |
-  | Backend | `POST /internal/huellitas/reservar` | Inventario, Pacientes |
-  | Backend | `POST /internal/huellitas/confirmar` | Inventario, Pacientes |
-  | Backend | `POST /internal/huellitas/liberar` | Inventario, Pacientes |
-  | Backend | `POST /internal/huellitas/devolucion` | Inventario |
-  | Backend | `POST /internal/notificaciones` | Pacientes, Adopciones, Reportes |
-  | Pacientes | `POST /internal/mascotas/{id}/transferir` | Adopciones |
+  | Inventario | `POST /internal/stock/descontar` | Pacientes, al finalizar una consulta |
+  | Backend | `POST /internal/notificaciones` | Pacientes, Inventario, Adopciones y Reportes, para dejar un aviso |
+  | Pacientes | `POST /internal/mascotas/{id}/transferir` | Adopciones, al completar una adopción |
+  | Pacientes | `POST /internal/turnos/{id}/cancelar-chequeo` | Adopciones, al dar de baja una publicación con el chequeo programado |
 
-  El funcionamiento de los endpoints de Huellitas está en `HUELLITAS.md`.
+- **Huellitas** (el programa de puntos de `HUELLITAS.md`) no llegó a implementarse: no hay endpoints ni movimientos de puntos, así que tampoco hay nada que proteger. Si se hace, sus endpoints internos (acreditar, reservar, confirmar, liberar y devolver) seguirían las mismas reglas.
 
 - Las llamadas internas entre módulos van por HTTP directo al proceso del módulo destino en `127.0.0.1` (por ejemplo, Pacientes llama a Inventario en `127.0.0.1:9002`): no pasan por la entrada pública de Nginx ni salen del contenedor.
 - **Si el módulo destino no responde, nada queda a medias:**
-  - **si la llamada es necesaria para la operación** (descontar stock, reservar o confirmar Huellitas, transferir la mascota), la operación entera se cancela y el usuario ve un mensaje para reintentar. Por ejemplo, si Inventario no responde, la consulta queda abierta y el veterinario vuelve a tocar "Finalizar consulta";
-  - **si es un efecto secundario** (acreditar Huellitas, enviar un aviso), la operación principal se completa y se muestra una advertencia con un botón para reintentarlo. Si el aviso de pago de MercadoPago no se puede procesar, se le responde con error y MercadoPago lo vuelve a enviar más tarde.
-- **Tareas programadas** (el motor de recomendaciones y el vencimiento diario de las Huellitas): GitHub Actions las dispara llamando a `/api/tareas/...`.
-  - Esas rutas exigen un **token de tareas** propio en el header `X-Task-Token`.
-  - El token se guarda en los secretos de GitHub y en las variables de entorno de Render.
+  - **si la llamada es necesaria para la operación** (descontar stock, transferir la mascota), la operación entera se cancela y el usuario ve un mensaje para reintentar. Por ejemplo, si Inventario no responde, la consulta queda abierta y el veterinario vuelve a tocar "Finalizar consulta";
+  - **si es un efecto secundario** (dejar un aviso), la operación principal se completa y el error queda en el log. Los WhatsApp que no salieron los reintenta la tarea programada. Si el aviso de pago de MercadoPago no se puede procesar, se le responde con error y MercadoPago lo vuelve a enviar más tarde.
+- **Tareas programadas**: GitHub Actions las dispara (ver "Tareas programadas" en el README del ApiGateway): `POST /api/notificaciones/tareas/enviar` (Backend), `POST /api/tienda/tareas/vencer` y `POST /api/inventario/tareas/vencer-lotes` (Inventario) y `POST /api/reportes/tareas/diaria` (Reportes).
+  - Esas rutas exigen un **token de tareas** propio en el header `X-Tarea-Token`, comparado en tiempo constante (`hash_equals`). Sin token válido responden `401`.
+  - El token se guarda en los secretos de GitHub (`TAREAS_TOKEN` para producción y `TAREAS_TOKEN_DEV` para dev) y en las variables de entorno de Render. Solo lo reciben los procesos que lo usan.
+  - Todas son idempotentes: si corren dos veces, no repiten avisos, cancelaciones ni movimientos de stock.
 - **Webhook de MercadoPago** (aviso HTTP que los servidores de MercadoPago le mandan a una URL nuestra cuando cambia el estado de un pago).
   - Cualquiera podría llamar a esa URL con un falso "pago aprobado".
   - Por eso, antes de marcar un pago como aprobado, se verifica la firma del aviso y se consulta el pago directamente a la API de MercadoPago.
@@ -147,7 +143,7 @@ Los servicios externos son MercadoPago y WhatsApp. Las tareas programadas las di
   - login y registro no llevan token: todavía no hay una sesión que proteger, y el token se genera justamente en ese momento.
 - Control de acceso validado en cada módulo, no solo en el frontend:
   - **por rol:** solo el veterinario carga consultas, administra el stock, modera y aprueba rescatistas; solo un rescatista `APROBADO` publica en adopciones;
-  - **por dueño:** un cliente solo ve sus mascotas, turnos, facturas y Huellitas; un rescatista solo ve las postulaciones de sus publicaciones.
+  - **por dueño:** un cliente solo ve sus mascotas, turnos, facturas y compras; un rescatista solo ve las postulaciones de sus publicaciones.
   - **Entrega 4, lo implementado:**
     - mascotas: el cliente da de alta, edita y da de baja solo las suyas. El dueño sale siempre del JWT, nunca del pedido. Si un cliente pide la mascota de otro, recibe `404` (no `403`), igual que si no existiera, para no revelar que existe. Lo mismo vale para el calendario sanitario;
     - turnos: solo el veterinario los crea, los cancela y los marca ausentes, siempre con token CSRF. El veterinario del turno sale de la sesión. El cliente solo ve los turnos de sus mascotas;
@@ -165,9 +161,9 @@ Los servicios externos son MercadoPago y WhatsApp. Las tareas programadas las di
   - las respuestas no incluyen campos internos, como el hash de la contraseña o datos de contacto de otros usuarios;
   - los errores no muestran el stack trace ni el SQL.
 - Llamadas internas:
-  - cada una lleva un `idOperacion` único. Si el mismo pedido llega dos veces (un reintento del usuario o un aviso repetido de MercadoPago), el destino lo aplica una sola vez: no descuenta stock ni mueve Huellitas dos veces;
+  - cada una lleva un `idOperacion` único. Si el mismo pedido llega dos veces (un reintento del usuario o un aviso repetido de MercadoPago), el destino lo aplica una sola vez: no descuenta stock dos veces ni deja dos veces el mismo aviso;
   - el cuerpo se valida igual que en un endpoint público;
-  - el timeout es de 3 segundos.
+  - el timeout es corto (de 3 a 10 segundos, según la llamada): un módulo caído no deja colgado al usuario.
 - Registro de auditoría:
   - accesos y modificaciones a fichas médicas;
   - acciones del veterinario: aprobar rescatistas, moderar, completar adopciones y ajustar stock;
