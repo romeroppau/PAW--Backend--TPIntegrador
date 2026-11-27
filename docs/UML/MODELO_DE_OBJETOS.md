@@ -1,6 +1,6 @@
 # Modelo de Objetos y Diagrama de Clases — HuellaVet (Entrega 5 Final)
 
-Modelo de objetos actualizado a la implementación final de los cinco módulos (**Backend**, **Pacientes**, **Inventario**, **Adopciones** y **Reportes**), al 26/11/2026 (migraciones `001` a `029`). En cada módulo las responsabilidades se dividen en:
+Modelo de objetos actualizado a la implementación final de los cinco módulos (**Backend**, **Pacientes**, **Inventario**, **Adopciones** y **Reportes**), al 27/11/2026 (migraciones `001` a `031`). En cada módulo las responsabilidades se dividen en:
 - **Clases de dominio y reglas de negocio** (sin SQL, probadas de forma aislada con PHPUnit): `Cliente`, `Veterinario`, `Rescatista`, `VerificacionWhatsApp`, `CatalogoConfiguracion`, `Insumo`, `Compra`, `Promocion`, `Reintegros`, `CalendarioSanitario`, `IntervalosVacunas`, `MotivosTurno`, `FacturaConsulta`, `HorarioAtencion`, `PrecioTurno`, `MotorRecomendaciones`, `LotesPorVencer`, `ParametrosMotor` y los validadores (`Validador*`).
 - **Controladores (`*Controlador`)**: verifican autenticación (`Auth::requerirRol`), CSRF (`Auth::verificarCsrf`) o tokens (`X-Servicio-Token` / `X-Tarea-Token`), delegan en el dominio/repositorio y responden JSON.
 - **Repositorios (`*Repositorio`)** y **`Lotes`**: encapsulan todas las consultas PDO parametrizadas y las transacciones sobre las tablas propias del módulo.
@@ -208,6 +208,9 @@ classDiagram
         +asignado(turno)$ array
         +reprogramado(turno, momento)$ array
         +cancelado(turno)$ array
+        +esChequeo(turno)$ bool
+        +chequeoReprogramado(turno, adopcion, momento)$ array
+        +chequeoCancelado(turno, adopcion)$ array
         +enviar(avisos)$ int
     }
 
@@ -268,8 +271,11 @@ classDiagram
         -decimal subtotalProductos
         -decimal total
         -EstadoFacturaConsulta estado
+        -MedioPago medioPago
+        -DateTime pagadaEn
         +calcular(valorBase, insumos, productos)$ array
         +numero(id)$ string
+        +marcarPagada(medioPago, veterinario, ahora) string
     }
 
     %% ---------- Adopciones ----------
@@ -323,7 +329,7 @@ classDiagram
         +postulacionNueva(postulacion)$ array
         +postulacionCancelada(postulacion)$ array
         +postulacionElegida(postulacion)$ array
-        +adopcionFinalizada(adopcion)$ array
+        +adopcionFinalizada(adopcion, rescatista)$ array
     }
 
     %% ---------- Inventario ----------
@@ -389,6 +395,17 @@ classDiagram
         +sincronizar(item) void
         +validarNuevo(datos, hoy, vence)$ array
         +nombre(numero, codigo)$ string
+    }
+
+    class BajaPorVencimiento {
+        <<service>>
+        +ejecutar(ahora) array
+        +darDeBajaVencidos() array
+        +darDeBaja(de, loteId) int
+        +bajasRecientes() array
+        -mandarAvisos(ahora) int
+        +mensaje(baja)$ string
+        +idOperacion(de, loteId)$ string
     }
 
     class MovimientoInventario {
@@ -515,6 +532,10 @@ classDiagram
     Compra "1" --> "*" Pago : cobra
     Lotes ..> LoteProducto : saca primero el que vence antes
     Lotes ..> LoteInsumo : saca primero el que vence antes
+    Veterinario "1" --> "*" FacturaConsulta : marca pagada
+    BajaPorVencimiento ..> Lotes : deja en 0 el lote vencido
+    BajaPorVencimiento ..> MovimientoInventario : «create» VENCIMIENTO
+    BajaPorVencimiento ..> Notificacion : «create»
     CalendarioSanitario ..> EventoSanitario : carga y marca
     CalendarioSanitario ..> IntervalosVacunas : días entre dosis
     MotivosTurno ..> MotivoDeTurno : lee
@@ -547,22 +568,23 @@ classDiagram
 | `CalendarioSanitario` y `PlanSanitario` | `src/CalendarioSanitario.php`, `src/CalendarioControlador.php`, `src/ValidadorCalendario.php` | El calendario lo carga la veterinaria, dosis por dosis del plan de la especie (`plan_sanitario`), respetando el orden: agregar, marcar como dada, cambiar la fecha y quitar. Calcula el estado de cada evento (`APLICADO`, `VENCIDO`, `PROXIMO`, `PENDIENTE`), si la mascota tiene las vacunas al día y sugiere la próxima dosis. Un turno de vacunación o desparasitación es para un evento del calendario (`eventoParaTurno`). |
 | `IntervalosVacunas` | `src/IntervalosVacunas.php` | Días mínimos entre dos dosis de la misma vacuna o desparasitación (y entre refuerzos), configurables por la veterinaria: detecta el conflicto y calcula la primera fecha posible (26/11). |
 | `TurnoControlador`, `MotivosTurno` y `HorarioAtencion` | `src/TurnoControlador.php`, `src/TurnoRepositorio.php`, `src/MotivosTurno.php`, `src/HorarioAtencion.php` | Agenda diaria, alta, reprogramación, cancelación y marcado de ausente, respetando el horario configurado (también el cortado). Un turno puede tener varios motivos (`turno_motivo`, migración 026), cada vacuna o desparasitación con su evento del calendario; `turno.motivo` es el principal. |
-| `AvisosTurno` | `src/AvisosTurno.php` | Avisa al dueño, por la campana y por WhatsApp, cuando le dan, le reprograman o le cancelan un turno (tipo `TURNO`). |
+| `AvisosTurno` | `src/AvisosTurno.php` | Avisa al dueño, por la campana y por WhatsApp, cuando le dan, le reprograman o le cancelan un turno (tipo `TURNO`). El turno del chequeo de adopción no avisa al cargarse (lo avisa Adopciones al asignarlo); si se reprograma o se cancela, avisa al adoptante y a la rescatista (27/11). |
 | `PrecioTurno` y `PromocionFranjaControlador` | `src/PrecioTurno.php`, `src/PromocionFranjaControlador.php`, `src/PromocionFranjaRepositorio.php` | Promociones sobre franjas de turnos (lunes a sábado, mañana o tarde) desde "Qué promocionar", y el precio de la consulta congelado en el turno al sacarlo. |
-| `ConsultaControlador` y `FacturaConsulta` | `src/ConsultaControlador.php`, `src/ConsultaRepositorio.php`, `src/FacturaConsulta.php`, `src/ClienteInventario.php` | Atención del turno, diagnóstico, insumos (la dosis de cada vacuna del turno) y productos, descuento transaccional de stock en Inventario (`POST /internal/stock/descontar`, del lote que vence primero) y factura `C-…`. Al finalizar, marca como dadas las dosis del calendario. |
+| `ConsultaControlador` y `FacturaConsulta` | `src/ConsultaControlador.php`, `src/ConsultaRepositorio.php`, `src/FacturaConsulta.php`, `src/ClienteInventario.php` | Atención del turno, diagnóstico, insumos (la dosis de cada vacuna del turno) y productos, descuento transaccional de stock en Inventario (`POST /internal/stock/descontar`, del lote que vence primero) y factura `C-…`. Al finalizar, marca como dadas las dosis del calendario. La veterinaria marca la factura como pagada con el medio de pago: efectivo, transferencia o tarjeta (migración 030, 27/11). |
 
 ### Adopciones (`PAW--Adopciones--TPIntegrador`)
 | Clase | Archivo | Responsabilidad |
 |---|---|---|
 | `PublicacionControlador` y `PublicacionRechazo` | `src/PublicacionControlador.php` | Alta, edición y baja de publicaciones con foto por rescatistas aprobados, y moderación por la veterinaria. Cada rechazo queda en el historial (`publicacion_rechazo`, migración 023) aunque la publicación se corrija y se apruebe después. |
 | `AdopcionControlador` y `AdopcionRepositorio` | `src/AdopcionControlador.php`, `src/AdopcionRepositorio.php`, `src/ClientePacientes.php` | Postulaciones de clientes (que pueden cancelar la suya, migración 021), elección del adoptante, turno de chequeo obligatorio, cierre con transferencia de la mascota y listado paginado con detalle. |
-| `AvisosAdopcion` | `src/AvisosAdopcion.php`, `src/ClienteBackend.php` | Envía a Backend (`POST /internal/notificaciones`) los avisos del circuito de adopción (campana y WhatsApp) con `id_operacion` fijo. |
+| `AvisosAdopcion` | `src/AvisosAdopcion.php`, `src/ClienteBackend.php` | Envía a Backend (`POST /internal/notificaciones`) los avisos del circuito de adopción (campana y WhatsApp) con `id_operacion` fijo. Desde el 27/11, al elegido le llega también por WhatsApp y, al completarse la adopción, a la rescatista (campana y WhatsApp). |
 
 ### Tienda e Inventario (`PAW--Inventario--TPIntegrador`)
 | Clase | Archivo | Responsabilidad |
 |---|---|---|
 | `ProductoControlador` y `Promocion` | `src/ProductoControlador.php`, `src/ProductoRepositorio.php`, `src/ValidadorProducto.php`, `src/Promocion.php`, `src/PromocionControlador.php`, `src/PromocionRepositorio.php` | Catálogo público con búsqueda y filtros, ABM de productos con imagen y "Vence" (migración 029), y promociones ("Publicitar" desde "Qué liquidar"): una promoción es de un lote y el descuento vale para las unidades que le quedan; si el cliente lleva más, las demás van a precio normal (dos líneas en la compra). |
 | `Lotes`, `LoteProducto` y `LoteInsumo` | `src/Lotes.php` | El stock de productos e insumos está en lotes (migraciones 028 y 029), numerados L1, L2, L3… con el número del fabricante opcional y su vencimiento. Si el producto o insumo vence, cada lote lleva su fecha; si no, ninguno. Carga en un lote que ya existe o en uno nuevo, retira de un lote o de los que vencen primero, y vende y usa en las consultas primero el lote sin vencer que vence antes (lo vencido no se vende ni se usa). Mantiene `stock` y `fecha_vencimiento` del producto o insumo. |
+| `BajaPorVencimiento` | `src/BajaPorVencimiento.php`, `src/TareaControlador.php` | Tarea diaria del motor (`POST /api/inventario/tareas/vencer-lotes`, con `X-Tarea-Token`): da de baja los lotes vencidos con stock de productos e insumos, con un movimiento `SALIDA`/`VENCIMIENTO` por lote (migración 031, `id_operacion` `vencimiento-{producto\|insumo}-{lote}`) y un aviso a las veterinarias (27/11). |
 | `Insumo` | `src/Insumo.php`, `src/InsumoControlador.php`, `src/InsumoRepositorio.php`, `src/InsumoValidador.php` | Reglas del insumo: estado `DISPONIBLE` / `EN_FALTA` según el stock, "Ya pedido", stock bajo (sin lo vencido), qué vacuna o antiparasitario del calendario es (`aplicacion`, migración 025) y si vence. |
 | `StockInternoControlador` | `src/StockInternoControlador.php`, `src/StockInternoRepositorio.php` | Endpoint interno `POST /internal/stock/descontar` con bloqueo de filas (`FOR UPDATE`), transacción todo-o-nada, idempotencia por `id_operacion` y un movimiento por lote. |
 | `Compra`, `Vencimientos` y `Reintegros` | `src/Compra.php`, `src/CarritoControlador.php`, `src/CompraControlador.php`, `src/Vencimientos.php`, `src/Reintegros.php`, `src/MercadoPago.php`, `src/PagoControlador.php` | Carrito, confirmación con reserva de stock por lote y factura `V-…`, plazos configurables de pago y retiro en días hábiles, pago con Mercado Pago (y webhook firmado), cancelación (el stock vuelve al lote del que salió) con devolución parcial y recordatorios de retiro. |
@@ -594,6 +616,7 @@ Los valores son los de la base de producción (columnas `ENUM`, ver `modelo-prod
 - **`FranjaTurno`**: `MANIANA`, `TARDE`
 - **`EstadoConsulta`**: `ABIERTA`, `FINALIZADA`
 - **`EstadoFacturaConsulta`**: `PENDIENTE_PAGO`, `PAGADA`
+- **`MedioPago`** (030): `EFECTIVO`, `TRANSFERENCIA`, `TARJETA`
 - **`EstadoModeracion`**: `PENDIENTE`, `APROBADA`, `RECHAZADA`
 - **`EstadoAdopcion`**: `PUBLICADA`, `CON_POSTULANTES`, `ADOPTANTE_ELEGIDO`, `CHEQUEO_PENDIENTE`, `FINALIZADA`, `CANCELADA`
 - **`EstadoPostulacion`**: `PENDIENTE`, `ELEGIDA`, `RECHAZADA`, `CANCELADA`
@@ -602,7 +625,7 @@ Los valores son los de la base de producción (columnas `ENUM`, ver `modelo-prod
 - **`EtapaVida`**: `CACHORRO`, `ADULTO`, `SENIOR`, `TODAS`
 - **`EstadoInsumo`**: `DISPONIBLE`, `EN_FALTA`, `YA_PEDIDO`
 - **`TipoMovimiento`**: `ENTRADA`, `SALIDA`, `AJUSTE`
-- **`MotivoMovimiento`**: `CARGA_VETERINARIO`, `CONSULTA`, `VENTA`, `AJUSTE`, `VENTA_CANCELADA`
+- **`MotivoMovimiento`**: `CARGA_VETERINARIO`, `CONSULTA`, `VENTA`, `AJUSTE`, `VENTA_CANCELADA`, `VENCIMIENTO` (031)
 - **`EstadoCarrito`**: `ABIERTO`, `CONFIRMADO`, `PAGADO`, `RETIRADO`, `CANCELADO`
 - **`EstadoFacturaCompra`**: `PENDIENTE_PAGO`, `PAGADA`, `ENTREGADA`, `CANCELADA`
 - **`MotivoCancelacion`**: `COMPRADOR`, `SIN_PAGO`, `VENCIDA`
@@ -613,6 +636,7 @@ Los valores son los de la base de producción (columnas `ENUM`, ver `modelo-prod
 
 ## 4. Cambios desde la versión del 23/11
 
+- **Correcciones finales** (27/11, migraciones 030 y 031): `FacturaConsulta` con `medioPago` y `pagadaEn` (`MedioPago`, la veterinaria la marca pagada); `BajaPorVencimiento` en Inventario y el motivo `VENCIMIENTO`; `AvisosTurno` con los avisos del chequeo de adopción; `AvisosAdopcion` avisa a la rescatista al completarse la adopción.
 - **Lotes** (migraciones 028 y 029): `LoteProducto`, `LoteInsumo` y la clase `Lotes`; `Producto` e `Insumo` tienen `vence` y su stock es la suma de los lotes; `Promocion` es de un lote; `ItemCarrito` guarda cuántas unidades fueron con descuento; `LotesPorVencer` en Reportes.
 - **Turnos con varios motivos** (026 y 027): `MotivoDeTurno` (tabla `turno_motivo`) y `MotivosTurno`; más motivos (`DESPARASITACION`, `CASTRACION`, `CIRUGIA`, `CONTROL`, `URGENCIA`).
 - **Calendario cargado por la veterinaria** (025, 26/11): `PlanSanitario`, `IntervalosVacunas`; el insumo dice qué vacuna es (`aplicacion`).
