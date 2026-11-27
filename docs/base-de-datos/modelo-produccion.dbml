@@ -1,6 +1,6 @@
 // HuellaVet — modelo de datos de producción (MySQL 8, base huellavet), en DBML.
-// Generado de las migraciones base/001 a base/029 del Gateway (las que tiene aplicadas producción
-// desde el 26/11/2026), corridas en un MySQL vacío y leídas de information_schema: tablas, columnas,
+// Generado de las migraciones base/001 a base/031 del Gateway (las que tiene aplicadas producción
+// desde el 27/11/2026), corridas en un MySQL vacío y leídas de information_schema: tablas, columnas,
 // claves, índices, claves foráneas, CHECK y vistas. El detalle de cada tabla está en DER.md.
 // Se abre en https://dbdiagram.io (pegar el texto). Para draw.io: dbdiagram.io → Export → SQL o PNG.
 
@@ -156,6 +156,9 @@ Table factura_consulta {
   total decimal(10,2) [not null]
   huellitas_usadas "int unsigned"
   estado factura_consulta_estado [not null, default: 'PENDIENTE_PAGO']
+  medio_pago factura_consulta_medio_pago [note: 'Migración 030: con qué se pagó (NULL si está pendiente o se pagó antes de la 030)']
+  pagada_en datetime [note: 'Migración 030']
+  pagada_por "int unsigned" [note: 'Migración 030: la veterinaria que la marcó pagada']
   fecha datetime [not null, default: `CURRENT_TIMESTAMP`]
 
   indexes {
@@ -714,6 +717,12 @@ Enum factura_compra_reintegro_estado {
   "HECHO"
 }
 
+Enum factura_consulta_medio_pago {
+  "EFECTIVO"
+  "TRANSFERENCIA"
+  "TARJETA"
+}
+
 Enum factura_consulta_estado {
   "PENDIENTE_PAGO"
   "PAGADA"
@@ -752,6 +761,7 @@ Enum movimiento_inventario_motivo {
   "VENTA"
   "AJUSTE"
   "VENTA_CANCELADA"
+  "VENCIMIENTO" [note: 'Migración 031: baja de un lote vencido por la tarea diaria']
 }
 
 Enum notificacion_tipo {
@@ -896,6 +906,7 @@ Ref fk_evento_plan: evento_sanitario.plan_sanitario_id > plan_sanitario.id
 Ref fk_factura_compra_carrito: factura_compra.carrito_id > carrito.id
 Ref fk_factura_compra_entrega: factura_compra.entregada_por > usuario.id
 Ref fk_factura_consulta: factura_consulta.consulta_id > consulta.id
+Ref fk_factura_consulta_pagada_por: factura_consulta.pagada_por > usuario.id
 Ref fk_item_carrito_carrito: item_carrito.carrito_id > carrito.id
 Ref fk_item_carrito_producto: item_carrito.producto_id > producto.id
 Ref fk_item_insumo_consulta: item_insumo_consulta.consulta_id > consulta.id

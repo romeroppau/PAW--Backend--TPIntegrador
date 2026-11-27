@@ -1,5 +1,5 @@
 @startuml HuellaVet_modelo_de_objetos
-' HuellaVet — modelo de objetos (diagrama de clases), Entrega 5 final, al 26/11/2026.
+' HuellaVet — modelo de objetos (diagrama de clases), Entrega 5 final, al 27/11/2026.
 ' Se ve en https://www.plantuml.com/plantuml, en VS Code (extensión PlantUML) o en draw.io
 ' (Arrange > Insert > Advanced > PlantUML). La misma información está en Mermaid en MODELO_DE_OBJETOS.md.
 ' «service»: clase con las reglas (sin estado propio); los métodos {static} no usan la base.
@@ -189,6 +189,9 @@ package "Pacientes" {
     {static} +asignado(turno) : array
     {static} +reprogramado(turno, momento) : array
     {static} +cancelado(turno) : array
+    {static} +esChequeo(turno) : bool
+    {static} +chequeoReprogramado(turno, adopcion, momento) : array
+    {static} +chequeoCancelado(turno, adopcion) : array
     {static} +enviar(avisos) : int
   }
   class HorarioAtencion <<service>> {
@@ -244,9 +247,12 @@ package "Pacientes" {
     -subtotalProductos : decimal
     -total : decimal
     -estado : EstadoFacturaConsulta
+    -medioPago : MedioPago
+    -pagadaEn : DateTime
     --
     {static} +calcular(valorBase, insumos, productos) : array
     {static} +numero(id) : string
+    +marcarPagada(medioPago, veterinario, ahora) : string
   }
 }
 
@@ -299,7 +305,7 @@ package "Adopciones" {
     {static} +postulacionNueva(postulacion) : array
     {static} +postulacionCancelada(postulacion) : array
     {static} +postulacionElegida(postulacion) : array
-    {static} +adopcionFinalizada(adopcion) : array
+    {static} +adopcionFinalizada(adopcion, rescatista) : array
   }
 }
 
@@ -365,6 +371,15 @@ package "Inventario" {
     +sincronizar(item) : void
     {static} +validarNuevo(datos, hoy, vence) : array
     {static} +nombre(numero, codigo) : string
+  }
+  class BajaPorVencimiento <<service>> {
+    +ejecutar(ahora) : array
+    +darDeBajaVencidos() : array
+    +darDeBaja(de, loteId) : int
+    +bajasRecientes() : array
+    -mandarAvisos(ahora) : int
+    {static} +mensaje(baja) : string
+    {static} +idOperacion(de, loteId) : string
   }
   class MovimientoInventario {
     -id : int
@@ -535,6 +550,11 @@ package "Enumeraciones" {
     PENDIENTE_PAGO
     PAGADA
   }
+  enum MedioPago {
+    EFECTIVO
+    TRANSFERENCIA
+    TARJETA
+  }
   enum EstadoModeracion {
     PENDIENTE
     APROBADA
@@ -586,6 +606,7 @@ package "Enumeraciones" {
     VENTA
     AJUSTE
     VENTA_CANCELADA
+    VENCIMIENTO
   }
   enum EstadoCarrito {
     ABIERTO
@@ -651,6 +672,10 @@ Carrito "1" --> "0..1" Compra : genera (factura_compra)
 Compra "1" --> "*" Pago : cobra
 Lotes ..> LoteProducto : saca primero el que vence antes
 Lotes ..> LoteInsumo : saca primero el que vence antes
+Veterinario "1" --> "*" FacturaConsulta : marca pagada
+BajaPorVencimiento ..> Lotes : deja en 0 el lote vencido
+BajaPorVencimiento ..> MovimientoInventario : «create» VENCIMIENTO
+BajaPorVencimiento ..> Notificacion : «create»
 CalendarioSanitario ..> EventoSanitario : carga y marca
 CalendarioSanitario ..> IntervalosVacunas : días entre dosis
 MotivosTurno ..> MotivoDeTurno : lee
