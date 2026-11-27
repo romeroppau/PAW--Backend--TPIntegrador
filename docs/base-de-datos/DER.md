@@ -2,7 +2,7 @@
 
 Una única base de datos MySQL en Aiven compartida por los cinco módulos (**Backend**, **Inventario**, **Pacientes**, **Adopciones** y **Reportes**). Cada módulo se conecta con su propio usuario de MySQL, escribe únicamente en sus tablas y lee las de los demás módulos en modo solo lectura (`SELECT`).
 
-El modelo completo de producción (migraciones `001` a `029`: todas las columnas con su tipo, claves, índices, `CHECK` y vistas) está también en DBML: [`modelo-produccion.dbml`](modelo-produccion.dbml). Se ve pegándolo en [dbdiagram.io](https://dbdiagram.io).
+El modelo completo de producción (migraciones `001` a `031`: todas las columnas con su tipo, claves, índices, `CHECK` y vistas) está también en DBML: [`modelo-produccion.dbml`](modelo-produccion.dbml). Se ve pegándolo en [dbdiagram.io](https://dbdiagram.io).
 
 ---
 
@@ -16,6 +16,7 @@ erDiagram
     usuario ||--o{ notificacion : "recibe"
     usuario ||--o{ configuracion : "actualiza"
     usuario ||--o{ movimiento_inventario : "registra"
+    usuario ||--o{ factura_consulta : "marca pagada (030)"
     usuario ||--o{ carrito : "arma"
     usuario ||--o{ factura_compra : "entrega"
     usuario ||--o{ promocion : "publica"
@@ -191,7 +192,7 @@ erDiagram
         INT_UNSIGNED lote_insumo_id FK "NULL (029)"
         ENUM tipo "ENTRADA, SALIDA, AJUSTE"
         INT_UNSIGNED cantidad
-        ENUM motivo "CARGA_VETERINARIO, CONSULTA, VENTA, AJUSTE, VENTA_CANCELADA"
+        ENUM motivo "CARGA_VETERINARIO, CONSULTA, VENTA, AJUSTE, VENTA_CANCELADA, VENCIMIENTO (031)"
         INT_UNSIGNED usuario_id FK "NULL"
         CHAR_36 id_operacion UK "NULL"
         DATETIME fecha
@@ -350,6 +351,9 @@ erDiagram
         DECIMAL_10_2 subtotal_productos
         DECIMAL_10_2 total
         ENUM estado "PENDIENTE_PAGO, PAGADA"
+        ENUM medio_pago "NULL: EFECTIVO, TRANSFERENCIA, TARJETA (030)"
+        DATETIME pagada_en "NULL (030)"
+        INT_UNSIGNED pagada_por FK "NULL (030)"
         DATETIME fecha
     }
 
@@ -404,7 +408,7 @@ erDiagram
 | **Inventario** | `producto` | `002`, `028`, `029` | E3–E5 | Catálogo de la tienda con su precio, categoría, especie e imagen (`MEDIUMBLOB`). Desde la `028`, `stock` es la suma de sus lotes y `fecha_vencimiento` la del lote con stock que vence primero (los mantiene Inventario). Desde la `029`, si vence (`vence`): si vence, cada lote lleva su fecha; si no, ninguno |
 | **Inventario** | `lote_producto` | `028`, `029` | E5 | Los lotes de cada producto, con su número L1, L2… (`numero`, `029`), el número del fabricante (opcional), su vencimiento (o ninguno) y su stock. Se vende y se usa en las consultas primero el lote sin vencer que vence antes |
 | **Inventario** | `lote_insumo` | `029` | E5 | Los lotes de cada insumo, igual que `lote_producto`. Las consultas usan primero el lote sin vencer que vence antes |
-| **Inventario** | `movimiento_inventario` | `002`, `003`, `010`, `028`, `029` | E3–E5 | Historial inmutable de variaciones de stock de productos e insumos (`ENTRADA`, `SALIDA`, `AJUSTE`) con `id_operacion` único. Desde la `028`, el lote de cada movimiento de producto (`lote_id`); desde la `029`, el de cada movimiento de insumo (`lote_insumo_id`) |
+| **Inventario** | `movimiento_inventario` | `002`, `003`, `010`, `028`, `029`, `031` | E3–E5 | Historial inmutable de variaciones de stock de productos e insumos (`ENTRADA`, `SALIDA`, `AJUSTE`) con `id_operacion` único. Desde la `028`, el lote de cada movimiento de producto (`lote_id`); desde la `029`, el de cada movimiento de insumo (`lote_insumo_id`). Desde la `031`, el motivo `VENCIMIENTO`: la tarea diaria da de baja los lotes vencidos de productos e insumos (salida sin usuario, `id_operacion` `vencimiento-{producto\|insumo}-{lote}`) |
 | **Inventario** | `insumo` | `003`, `025`, `029` | E3–E5 | Materiales internos de uso clínico (`DISPONIBLE`, `EN_FALTA`, `YA_PEDIDO`). Desde la `025`, qué vacuna o antiparasitario del calendario es (`aplicacion`). Desde la `029`, `stock` es la suma de sus lotes, `fecha_vencimiento` la del lote con stock que vence primero y `vence` si vence (como en `producto`) |
 | **Inventario** | `carrito` | `010` | E5 | Carrito de compra de un cliente o rescatista (a lo sumo un carrito `ABIERTO` por usuario mediante columna generada `abierto`) |
 | **Inventario** | `item_carrito` | `010`, `028` | E5 | Productos dentro del carrito con la cantidad y el precio cobrado al confirmar. Desde la `028`, cuántas unidades fueron con el descuento de la promoción y a qué precio (`cantidad_promocion`, `precio_promocion`) |
@@ -419,7 +423,7 @@ erDiagram
 | **Pacientes** | `consulta` | `006` | E4 | Atención clínica de un turno: diagnóstico, observaciones y valor base |
 | **Pacientes** | `item_insumo_consulta` | `006` | E4 | Insumos utilizados en la consulta con su costo unitario histórico |
 | **Pacientes** | `item_producto_consulta` | `006` | E4 | Productos agregados en la consulta con su precio unitario histórico |
-| **Pacientes** | `factura_consulta` | `006` | E4 | Factura `C-…` emitida al finalizar la consulta (`subtotal_base + subtotal_insumos + subtotal_productos`) |
+| **Pacientes** | `factura_consulta` | `006`, `030` | E4–E5 | Factura `C-…` emitida al finalizar la consulta (`subtotal_base + subtotal_insumos + subtotal_productos`). Desde la `030`, la veterinaria la marca pagada con el medio de pago (`medio_pago`: efectivo, transferencia o tarjeta) y queda cuándo y quién (`pagada_en`, `pagada_por`) |
 | **Pacientes** | `promocion_franja` | `020` | E5 | Descuentos del 5 % al 90 % sobre franjas de turnos (lunes a sábado, mañana o tarde) publicados desde "Qué promocionar" |
 | **Adopciones** | `publicacion` | `007` | E5 | Aviso de adopción creado por un rescatista aprobado y moderado por la veterinaria (columna generada `vigente`) |
 | **Adopciones** | `adopcion` | `007` | E5 | Proceso de adopción con 6 estados, adoptante elegido y turno de chequeo obligatorio |
@@ -435,6 +439,7 @@ erDiagram
   - `turno` guarda `precio_consulta`, `descuento` y `promocion_franja_id` al reservarse o reprogramarse: la consulta toma ese valor aunque la promoción termine antes del día del turno.
   - `item_carrito`, `item_insumo_consulta` e `item_producto_consulta` copian el precio o costo unitario del momento. `item_carrito` guarda además cuántas unidades se cobraron con el descuento de la promoción (`028`).
 - **Stock por lote** (`028`): el stock de un producto está en `lote_producto`; `producto.stock` y `producto.fecha_vencimiento` son derivados (la suma y el primer vencimiento con stock) que Inventario actualiza en la misma transacción, así los módulos que solo leen `producto` siguen igual. Cada movimiento de un producto dice su lote: una venta cancelada devuelve cada unidad al lote del que salió. Desde la `029`, los insumos también tienen lotes (`lote_insumo`, con `insumo.stock` e `insumo.fecha_vencimiento` derivados), los lotes de cada producto o insumo se numeran 1, 2, 3… (L1, L2, L3… en la pantalla) y `vence` dice si sus lotes llevan fecha de vencimiento (lo controla Inventario; se cambia solo sin stock).
+- **Baja de los lotes vencidos** (`031`): no se borra nada. La tarea diaria del motor deja el lote vencido en 0 con un movimiento `SALIDA`/`VENCIMIENTO` (se ve en Movimientos como "Baja por vencimiento") y recalcula el stock derivado; el `id_operacion` por lote hace que dos corridas el mismo día no lo den de baja dos veces.
 - **Columnas generadas para unicidad parcial en MySQL** (como MySQL no compara `NULL` en índices `UNIQUE`):
   - `turno.ocupa_horario`: `1` si no está cancelado, `NULL` si está `CANCELADO` → un turno cancelado libera la fecha y hora del veterinario.
   - `publicacion.vigente`: `1` si está activa y no rechazada, `NULL` en caso contrario → una mascota solo tiene una publicación abierta a la vez.
@@ -451,6 +456,6 @@ erDiagram
 |---|---|---|
 | **`backend`** | `usuario`, `notificacion`, `verificacion_whatsapp`, `configuracion` (con `DELETE`), `resena` (con `DELETE`) | `mascota`, `adopcion` (para la ficha de clientes de la veterinaria) |
 | **`inventario`** | `producto`, `lote_producto` (`028`), `insumo`, `lote_insumo` (`029`), `movimiento_inventario` (solo `SELECT, INSERT`), `carrito`, `item_carrito` (con `DELETE`), `factura_compra`, `pago`, `promocion` | `usuario`, `configuracion` |
-| **`pacientes`** | `mascota`, `turno`, `turno_motivo`, `evento_sanitario` (con `DELETE`, `025`), `consulta`, `item_insumo_consulta` (con `DELETE`), `item_producto_consulta` (con `DELETE`), `factura_consulta`, `promocion_franja` | `plan_sanitario`, `usuario`, `producto`, `insumo`, `configuracion` |
+| **`pacientes`** | `mascota`, `turno`, `turno_motivo`, `evento_sanitario` (con `DELETE`, `025`), `consulta`, `item_insumo_consulta` (con `DELETE`), `item_producto_consulta` (con `DELETE`), `factura_consulta`, `promocion_franja` | `plan_sanitario`, `usuario`, `producto`, `insumo`, `configuracion`, `adopcion` (27/11: para avisarle al adoptante si se reprograma o cancela el turno del chequeo) |
 | **`adopciones`** | `publicacion`, `adopcion`, `postulacion` | `usuario`, `mascota`, `turno`, `consulta` |
 | **`reportes`** | — *(no tiene permisos de escritura en ninguna tabla)* | `usuario`, `mascota`, `turno`, `consulta`, `item_insumo_consulta`, `item_producto_consulta`, `factura_consulta`, `evento_sanitario`, `plan_sanitario`, `producto`, `lote_producto` (`028`), `insumo`, `lote_insumo` (`029`), `movimiento_inventario`, `adopcion`, `publicacion`, `configuracion`, `promocion_franja`, `turno_motivo`, `v_turnos_atendidos` |
